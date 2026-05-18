@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Open EASM V4.3</title>
+  <link rel="icon" href="/assets/favicon.png" />
+  <link rel="stylesheet" href="/styles.css?v=4.3.0" />
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <div class="brand">
+        <img class="app-logo" src="/assets/logo-wide.png" alt="Logo Open EASM" />
+        <div>
+          <p class="eyebrow">Plateforme EASM publique & domaines vérifiés</p>
+          <h1>Open EASM V4.3</h1>
+          <p class="subtitle">
+            Audit public non intrusif, historique PostgreSQL, comparaison, rapports Excel/PDF/JSON et vérification de propriété par DNS TXT.
+          </p>
+        </div>
+      </div>
+      <div class="badge">V4.3 Intelligence</div>
+    </section>
+
+    <section id="dashboard" class="dashboard-grid"></section>
+
+    <section class="card main-card">
+      <label for="domain">Domaine à auditer</label>
+      <div class="form-row">
+        <input id="domain" type="text" placeholder="exemple : google.com" autocomplete="off" />
+        <button id="runBtn" disabled>Lancer l'audit</button>
+        <button id="resetBtn" class="secondary" type="button">Nouvel audit</button>
+      </div>
+
+      <div id="termsBox" class="terms-box" role="button" tabindex="0" aria-pressed="false">
+        <input id="termsAcceptedV4.3" type="checkbox" />
+        <div>
+          <strong>Usage responsable</strong>
+          <p>Je confirme utiliser cet outil dans un cadre autorisé. La V4.3 réalise uniquement des contrôles publics non intrusifs.</p>
+        </div>
+      </div>
+
+      <p id="termsStatus" class="terms-status ko">Usage responsable non accepté : le bouton d’audit est désactivé.</p>
+      <p class="notice">Aucun scan de ports, aucune exploitation, aucun bruteforce. Les contrôles HTTP/TLS sont bloqués si la cible résout vers une IP non publique.</p>
+    </section>
+
+
+    <section class="card verify-card">
+      <div class="section-header">
+        <h2>Vérification de propriété du domaine</h2>
+        <span id="verificationBadge" class="pill">Non démarrée</span>
+      </div>
+      <p class="notice">
+        La vérification DNS permet de prouver que vous contrôlez le domaine. Elle servira de base aux futurs audits avancés.
+      </p>
+      <div class="actions verify-actions">
+        <button id="startVerificationBtn" class="secondary" type="button">Générer le TXT</button>
+        <button id="checkVerificationBtn" class="secondary" type="button">Vérifier le TXT</button>
+        <button id="deleteVerificationBtn" class="danger" type="button">Supprimer la vérification</button>
+      </div>
+      <div id="verificationResult" class="verify-result hidden"></div>
+    </section>
+
+    <section id="loading" class="card hidden">
+      <h2>Audit en cours...</h2>
+      <p>Analyse DNS, messagerie, HTTPS/TLS, inventaire IP, CTI léger, CVE passives et sous-domaines publics.</p>
+    </section>
+
+    <section id="error" class="card error hidden"></section>
+
+    <section id="results" class="hidden">
+      <div class="grid">
+        <div class="card score-card">
+          <p class="eyebrow">Score global</p>
+          <div id="score" class="score">-</div>
+          <div id="level" class="level">-</div>
+          <div id="profile" class="profile">-</div>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Synthèse</p>
+          <ul id="summary"></ul>
+          <div class="actions">
+            <a id="reportLink" class="button-secondary" href="#" target="_blank">Excel</a>
+            <a id="pdfLink" class="button-secondary gold" href="#" target="_blank">PDF</a>
+            <a id="jsonLink" class="button-secondary" href="#" target="_blank">JSON</a>
+          </div>
+        </div>
+      </div>
+
+      <section id="comparisonCard" class="card hidden">
+        <div class="section-header">
+          <h2>Comparaison avec l’audit précédent</h2>
+          <span id="scoreDelta" class="pill">-</span>
+        </div>
+        <div id="comparison" class="target-list"></div>
+      </section>
+
+      <section class="card priority-card">
+        <div class="section-header"><h2>Constats priorisés</h2></div>
+        <div id="findings"></div>
+      </section>
+
+      <section class="card priority-card">
+        <div class="section-header"><h2>Sous-domaines publics</h2><span id="subCount" class="pill">0 détecté</span></div>
+        <div id="subdomains" class="chips"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>Inventaire IP</h2><span id="ipCount" class="pill">0 IP</span></div>
+        <p id="ipInventoryNote" class="notice"></p>
+        <div id="ipInventory" class="target-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>CTI / Réputation</h2><span class="pill">Résumé DNSBL</span></div>
+        <div id="ctiBox" class="target-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>Cibles web testées</h2><span id="webTargetCount" class="pill">0 cible</span></div>
+        <div id="webTargets" class="target-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>TLS/SSL avancé</h2><span id="tlsScoreBadge" class="pill">- / 100</span></div>
+        <div id="tlsAdvanced" class="target-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>CVE potentielles passives</h2><span id="cveCount" class="pill">0 détectée</span></div>
+        <div id="passiveCves" class="target-list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi V4.3</span></div>
+        <div id="patchingBox" class="target-list"></div>
+      </section>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <h2>Domaines vérifiés</h2>
+        <button id="refreshVerifiedBtn" class="secondary small" type="button">Rafraîchir</button>
+      </div>
+      <div id="verifiedDomains" class="history"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <h2>Historique serveur PostgreSQL</h2>
+        <div class="actions"><button id="refreshHistoryBtn" class="secondary small" type="button">Rafraîchir</button><button id="clearAllBtn" class="danger small" type="button">Tout supprimer</button></div>
+      </div>
+      <div id="history" class="history"></div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=4.3.0"></script>
+</body>
+</html>
