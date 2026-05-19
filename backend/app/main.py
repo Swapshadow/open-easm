@@ -30,11 +30,13 @@ from app.reports.pdf_report import generate_pdf_report
 from app.database import init_db_with_retry, get_db
 from app.services.storage import save_audit, list_audits, get_audit_record, dashboard_stats, compare_latest, delete_audit, delete_all_audits, delete_domain_audits
 from app.services.domain_verification import start_verification, check_verification, get_domain_status, list_verified_domains, delete_verification, serialize_verification
+from app.services.diagnostics import build_system_diagnostics, test_export_dependencies
+from app.services.executive_risk import build_executive_risk
 
 app = FastAPI(
-    title="OpenEASM V6.0.2",
-    description="Audit EASM public non intrusif : DNS, mail, TLS, web headers, www automatique, sous-domaines passifs, inventaire IP, CTI léger, CVE passives et rapports Excel/JSON.",
-    version="6.0.2",
+    title="OpenEASM Alpha",
+    description="OpenEASM Alpha : outil EASM public non intrusif avec scoring exécutif, rapports et constats localisés.",
+    version="alpha",
 )
 
 
@@ -68,7 +70,7 @@ class DomainVerificationRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "openeasm-v6_2"}
+    return {"status": "ok", "service": "openeasm-alpha"}
 
 @app.post("/api/audit")
 async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_db)):
@@ -128,15 +130,17 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     domain_profile = classify_domain(dns_result, mail_result, web_result)
     findings = adjust_findings_for_profile(raw_findings, domain_profile)
     findings = enrich_findings_locations(findings, domain)
-    score = compute_score(findings, domain_profile)
+    legacy_score = compute_score(findings, domain_profile)
     patching_sla = build_patching_sla(findings, created_at)
+    executive_risk = build_executive_risk(findings, domain_profile, tls_score, ip_inventory, subdomains_result, passive_cves, cti_result)
+    score = executive_risk.get('global_score', legacy_score)
 
     audit_id = str(uuid4())
     audit = {
         "id": audit_id,
         "domain": domain,
         "created_at": created_at,
-        "mode": "public_non_intrusive_v6",
+        "mode": "public_non_intrusive_alpha",
         "verification": verification_status,
         "domain_profile": domain_profile,
         "dns": dns_result,
@@ -149,6 +153,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "passive_cves": passive_cves,
         "cti": cti_result,
         "patching_sla": patching_sla,
+        "executive_risk": executive_risk,
+        "legacy_score": legacy_score,
         "findings": findings,
         "score": score,
         "safety": {
@@ -165,12 +171,24 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "json_filename": None,
     }
 
-    report_filename = generate_excel_report(audit)
-    json_filename = generate_json_report(audit)
-    pdf_filename = generate_pdf_report(audit)
-    audit["report_filename"] = report_filename
-    audit["json_filename"] = json_filename
-    audit["pdf_filename"] = pdf_filename
+    audit["report_errors"] = []
+    try:
+        report_filename = generate_excel_report(audit)
+        audit["report_filename"] = report_filename
+    except Exception as exc:
+        audit["report_errors"].append(f"Excel: {exc}")
+
+    try:
+        json_filename = generate_json_report(audit)
+        audit["json_filename"] = json_filename
+    except Exception as exc:
+        audit["report_errors"].append(f"JSON: {exc}")
+
+    try:
+        pdf_filename = generate_pdf_report(audit)
+        audit["pdf_filename"] = pdf_filename
+    except Exception as exc:
+        audit["report_errors"].append(f"PDF: {exc}")
 
     AUDITS[audit_id] = audit
     save_audit(db, audit)
@@ -183,6 +201,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "created_at": audit["created_at"],
         "domain_profile": domain_profile,
         "score": audit["score"],
+        "executive_risk": executive_risk,
         "tls_score": tls_score,
         "findings": audit["findings"],
         "subdomains": {
@@ -231,6 +250,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "report_url": f"/api/reports/{audit_id}/excel",
         "json_url": f"/api/reports/{audit_id}/json",
         "pdf_url": f"/api/reports/{audit_id}/pdf",
+        "report_errors": audit.get("report_errors", []),
         "summary": {
             "dns_public_ips": audit["dns"].get("public_ips", []),
             "spf_records": audit["dns"].get("spf_records", []),
@@ -245,6 +265,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "passive_cve_count": passive_cves.get("count", 0),
             "tls_score": tls_score.get("global_score"),
             "tls_level": tls_score.get("global_level"),
+            "executive_score": executive_risk.get("overall_score"),
+            "executive_risk": executive_risk.get("risk_level"),
         },
     }
 
@@ -280,6 +302,43 @@ async def get_audit(audit_id: str, db=Depends(get_db)):
 @app.get("/api/dashboard")
 async def api_dashboard(db=Depends(get_db)):
     return dashboard_stats(db)
+
+
+
+@app.get("/api/system/diagnostics")
+async def api_system_diagnostics(db=Depends(get_db)):
+    return build_system_diagnostics(db)
+
+@app.post("/api/system/export-test")
+async def api_export_test():
+    return test_export_dependencies(cleanup=True)
+
+@app.get("/api/reports")
+async def api_reports_center(limit: int = 100, domain: str | None = None, db=Depends(get_db)):
+    records = list_audits(db, limit=limit, domain=domain)
+    items = []
+    for r in records:
+        items.append({
+            "id": r.id,
+            "domain": r.domain,
+            "created_at": r.created_at.isoformat(),
+            "score": r.score,
+            "level": r.level,
+            "profile": r.profile,
+            "excel_filename": r.excel_filename,
+            "json_filename": r.json_filename,
+            "pdf_filename": r.pdf_filename,
+            "excel_exists": bool(r.excel_filename and (REPORT_DIR / r.excel_filename).exists()),
+            "json_exists": bool(r.json_filename and (REPORT_DIR / r.json_filename).exists()),
+            "pdf_exists": bool(r.pdf_filename and (REPORT_DIR / r.pdf_filename).exists()),
+            "excel_url": f"/api/reports/{r.id}/excel",
+            "json_url": f"/api/reports/{r.id}/json",
+            "pdf_url": f"/api/reports/{r.id}/pdf",
+        })
+    return {
+        "count": len(items),
+        "items": items,
+    }
 
 
 @app.post("/api/domains/verification/start")

@@ -34,13 +34,13 @@ def generate_pdf_report(audit: dict) -> str:
         leftMargin=1.15*cm,
         topMargin=1.35*cm,
         bottomMargin=1.15*cm,
-        title=f"OpenEASM V6 - {audit['domain']}",
+        title=f"OpenEASM Alpha - {audit['domain']}",
     )
 
     styles = _styles()
     story = []
 
-    story.append(Paragraph("OPENEASM V6", styles["Hero"]))
+    story.append(Paragraph("OPENEASM ALPHA", styles["Hero"]))
     story.append(Paragraph("Rapport d'exposition externe - audit public non intrusif", styles["Subtitle"]))
     story.append(Spacer(1, 0.22*cm))
 
@@ -51,6 +51,20 @@ def generate_pdf_report(audit: dict) -> str:
     ]
     story.append(_table(kpi, [3.0*cm, 5.1*cm, 3.0*cm, 4.2*cm, 3.0*cm, 5.0*cm], header=False, styles=styles))
     story.append(Spacer(1, 0.35*cm))
+
+
+    risk = audit.get("executive_risk", {}) or {}
+    story.append(Paragraph("Executive Risk Overview", styles["Section"]))
+    story.append(Paragraph(str(risk.get("board_summary", "Scoring exécutif indisponible.")), styles["Body"]))
+    risk_rows = [["Indicateur", "Valeur"], ["Score exécutif", f"{risk.get('overall_score', 'N/A')} / {risk.get('max_score', 100)}"], ["Niveau de risque", risk.get("risk_level", "N/A")], ["Posture", risk.get("posture", "N/A")]]
+    story.append(_table(risk_rows, [6.0*cm, 20.0*cm], small=True, styles=styles))
+    story.append(Spacer(1, 0.22*cm))
+
+    pillar_rows = [["Pilier", "Score", "Niveau", "Risque", "Constats"]]
+    for p in risk.get("pillars", []) or []:
+        pillar_rows.append([p.get("label", ""), f"{p.get('score', 'N/A')} / 100", p.get("level", ""), p.get("risk", ""), str(p.get("findings_count", 0))])
+    story.append(_table(pillar_rows, [5.0*cm, 3.0*cm, 5.0*cm, 4.0*cm, 3.0*cm], small=True, styles=styles))
+    story.append(Spacer(1, 0.22*cm))
 
     story.append(Paragraph("Synthese executive", styles["Section"]))
     story.append(Paragraph(_conclusion(audit), styles["Body"]))
@@ -122,7 +136,7 @@ def _decorate_page(canvas: Canvas, doc):
     canvas.rect(0, height-1.04*cm, width, 0.035*cm, fill=1, stroke=0)
     canvas.setFont("Helvetica-Bold", 8)
     canvas.setFillColor(GOLD_LIGHT)
-    canvas.drawString(1.15*cm, height-0.66*cm, "OPENEASM V6")
+    canvas.drawString(1.15*cm, height-0.66*cm, "OPENEASM ALPHA")
     canvas.setFillColor(MUTED)
     canvas.drawRightString(width-1.15*cm, 0.62*cm, f"Page {doc.page}")
     canvas.restoreState()

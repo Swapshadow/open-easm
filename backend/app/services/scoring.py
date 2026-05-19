@@ -1,8 +1,8 @@
 SEVERITY_WEIGHTS = {
-    "critical": 200,
-    "high": 120,
-    "medium": 60,
-    "low": 25,
+    "critical": 160,
+    "high": 95,
+    "medium": 42,
+    "low": 15,
     "info": 0,
 }
 
@@ -13,15 +13,9 @@ def collect_findings(*sections: dict) -> list[dict]:
     return findings
 
 def compute_score(findings: list[dict], profile: dict | None = None) -> dict:
+    # Fallback technical score. OpenEASM Alpha uses executive_risk.global_score as source of truth.
     penalty = 0
-    by_severity = {
-        "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 0,
-        "info": 0,
-    }
-
+    by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     by_category = {}
 
     for finding in findings:
@@ -37,7 +31,7 @@ def compute_score(findings: list[dict], profile: dict | None = None) -> dict:
         level = "Bon"
     elif score >= 700:
         level = "Correct"
-    elif score >= 500:
+    elif score >= 550:
         level = "Moyen"
     else:
         level = "Faible"
@@ -51,4 +45,5 @@ def compute_score(findings: list[dict], profile: dict | None = None) -> dict:
         "by_category": by_category,
         "profile_adjusted": True,
         "profile": profile.get("profile") if profile else None,
+        "source": "fallback_legacy",
     }

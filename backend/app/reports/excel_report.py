@@ -34,6 +34,7 @@ def generate_excel_report(audit: dict) -> str:
     ws = wb.active
     ws.title = "Executive Summary"
     _executive_summary(ws, audit)
+    _sheet_executive_risk(wb, audit)
 
     _sheet_action_plan(wb, audit)
     _sheet_findings(wb, audit)
@@ -60,7 +61,7 @@ def _executive_summary(ws, audit):
     _paint_background(ws, rows=34, cols=10)
     ws.merge_cells("A1:J2")
     c = ws["A1"]
-    c.value = "OPENEASM V6 - RAPPORT D'EXPOSITION EXTERNE"
+    c.value = "OPENEASM ALPHA - RAPPORT D'EXPOSITION EXTERNE"
     c.font = Font(bold=True, size=18, color=GOLD_LIGHT)
     c.fill = PatternFill("solid", fgColor=BLACK)
     c.alignment = Alignment(horizontal="center", vertical="center")
@@ -128,6 +129,40 @@ def _executive_summary(ws, audit):
     ws["D18"].fill = PatternFill("solid", fgColor=BLACK)
 
     _format_sheet(ws, freeze=None)
+
+
+def _sheet_executive_risk(wb, audit):
+    ws = wb.create_sheet("Executive Risk")
+    risk = audit.get("executive_risk", {}) or {}
+
+    rows = [
+        ["Score exécutif", f"{risk.get('overall_score', 'N/A')} / {risk.get('max_score', 100)}"],
+        ["Niveau de risque", risk.get("risk_level", "N/A")],
+        ["Posture", risk.get("posture", "N/A")],
+        ["Profil", risk.get("profile", "N/A")],
+        ["Synthèse direction", risk.get("board_summary", "")],
+        ["Méthode", risk.get("method", "")],
+    ]
+    _table_sheet(ws, "EXECUTIVE RISK OVERVIEW", ["Indicateur", "Valeur"], rows)
+
+    start = len(rows) + 8
+    ws.cell(start, 1, "Piliers de risque")
+    ws.cell(start, 1).font = Font(bold=True, color=GOLD_LIGHT, size=14)
+
+    headers = ["Pilier", "Score", "Niveau", "Risque", "Constats", "Critique/Élevé", "Recommandation"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(start + 1, col, h)
+    _header_row(ws, start + 1, len(headers))
+
+    for idx, p in enumerate(risk.get("pillars", []) or [], start + 2):
+        values = [p.get("label"), p.get("score"), p.get("level"), p.get("risk"), p.get("findings_count"), p.get("critical_high_count"), p.get("recommendation")]
+        for col, val in enumerate(values, 1):
+            ws.cell(idx, col, _excel_value(val))
+            ws.cell(idx, col).font = Font(color=WHITE)
+            ws.cell(idx, col).fill = PatternFill("solid", fgColor=BLACK if idx % 2 else ROW_DARK)
+
+    _format_sheet(ws)
+
 
 def _sheet_action_plan(wb, audit):
     ws = wb.create_sheet("Plan Action")

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.env
+.env.local
+
+backend/reports/*
+!backend/reports/.gitkeep
+
+*.zip
+.DS_Store
+Thumbs.db

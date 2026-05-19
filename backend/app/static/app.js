@@ -26,7 +26,7 @@ const refreshHistoryBtn = document.getElementById("refreshHistoryBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const domainInput = document.getElementById("domain");
 const termsBox = document.getElementById("termsBox");
-const termsAcceptedInput = document.getElementById("termsAcceptedV5");
+const termsAcceptedInput = document.getElementById("termsAcceptedV6");
 const termsStatus = document.getElementById("termsStatus");
 const loading = document.getElementById("loading");
 const errorBox = document.getElementById("error");
@@ -64,6 +64,18 @@ const verificationBadge = document.getElementById("verificationBadge");
 const verificationResult = document.getElementById("verificationResult");
 const refreshVerifiedBtn = document.getElementById("refreshVerifiedBtn");
 const verifiedDomainsBox = document.getElementById("verifiedDomains");
+const refreshDiagnosticsBtn = document.getElementById("refreshDiagnosticsBtn");
+const testExportsBtn = document.getElementById("testExportsBtn");
+const diagnosticsGrid = document.getElementById("diagnosticsGrid");
+const exportTestResult = document.getElementById("exportTestResult");
+const refreshReportsBtn = document.getElementById("refreshReportsBtn");
+const reportsCenter = document.getElementById("reportsCenter");
+const executiveRiskBox = document.getElementById("executiveRisk");
+const executiveSummaryBox = document.getElementById("executiveSummary");
+const pillarScoresBox = document.getElementById("pillarScores");
+const topRisksBox = document.getElementById("topRisks");
+const menuLinks = document.querySelectorAll("[data-page-link]");
+const pages = document.querySelectorAll(".page");
 
 
 let termsAccepted = false;
@@ -100,6 +112,10 @@ async function fetchJsonSafe(url, options = {}) {
 
 runBtn.addEventListener("click", runAudit);
 resetBtn.addEventListener("click", resetAudit);
+if (refreshDiagnosticsBtn) refreshDiagnosticsBtn.addEventListener("click", loadDiagnostics);
+if (testExportsBtn) testExportsBtn.addEventListener("click", runExportTest);
+if (refreshReportsBtn) refreshReportsBtn.addEventListener("click", loadReportsCenter);
+menuLinks.forEach(btn => btn.addEventListener("click", () => showPage(btn.dataset.pageLink)));
 refreshHistoryBtn.addEventListener("click", loadServerData);
 clearAllBtn.addEventListener("click", clearAllAudits);
 startVerificationBtn.addEventListener("click", startDomainVerification);
@@ -124,8 +140,29 @@ termsBox.addEventListener("keydown", (e) => {
 });
 
 setTermsAccepted(false);
+initPageNavigation();
 loadServerData();
 loadVerifiedDomains();
+loadDiagnostics();
+loadReportsCenter();
+
+
+function initPageNavigation() {
+  const initial = (location.hash || "#audit").replace("#", "");
+  showPage(["audit", "diagnostics", "reports"].includes(initial) ? initial : "audit", false);
+  window.addEventListener("hashchange", () => {
+    const page = (location.hash || "#audit").replace("#", "");
+    showPage(["audit", "diagnostics", "reports"].includes(page) ? page : "audit", false);
+  });
+}
+
+function showPage(page, updateHash = true) {
+  pages.forEach(section => section.classList.toggle("active", section.id === `page-${page}`));
+  menuLinks.forEach(btn => btn.classList.toggle("active", btn.dataset.pageLink === page));
+  if (updateHash) history.replaceState(null, "", `#${page}`);
+  if (page === "diagnostics") loadDiagnostics();
+  if (page === "reports") loadReportsCenter();
+}
 
 function setTermsAccepted(value) {
   termsAccepted = Boolean(value);
@@ -164,7 +201,7 @@ async function runAudit() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-OpenEASM-Version": "6.0.2"
+        "X-OpenEASM-Version": "alpha"
       },
       body: JSON.stringify({ domain, accepted_terms: true }),
     });
@@ -173,6 +210,7 @@ async function runAudit() {
     await loadComparison(data.domain);
     await loadServerData();
     await loadVerifiedDomains();
+    await loadReportsCenter();
   } catch (err) {
     errorBox.textContent = err.message || "Erreur inconnue pendant l'audit.";
     errorBox.classList.remove("hidden");
@@ -195,6 +233,94 @@ async function loadServerData() {
     dashboard.innerHTML = "";
     historyBox.innerHTML = "<p class='notice'>Historique serveur indisponible.</p>";
   }
+}
+
+
+
+async function loadDiagnostics() {
+  if (!diagnosticsGrid) return;
+  diagnosticsGrid.innerHTML = "<p class='notice'>Diagnostic en cours...</p>";
+  try {
+    const data = await fetchJsonSafe("/api/system/diagnostics");
+    renderDiagnostics(data);
+  } catch (err) {
+    diagnosticsGrid.innerHTML = `<div class="diag-item error-status"><strong>Diagnostic indisponible</strong><span>${escapeHtml(err.message)}</span></div>`;
+  }
+}
+
+function renderDiagnostics(data) {
+  diagnosticsGrid.innerHTML = "";
+  const overall = document.createElement("div");
+  overall.className = `diag-item ${statusClass(data.overall)}`;
+  overall.innerHTML = `<strong>État global : ${escapeHtml(data.overall || "unknown")}</strong><span>Version ${escapeHtml(data.version || "N/A")} — ${escapeHtml(new Date(data.generated_at).toLocaleString())}</span>`;
+  diagnosticsGrid.appendChild(overall);
+
+  for (const item of data.items || []) {
+    const div = document.createElement("div");
+    div.className = `diag-item ${statusClass(item.status)}`;
+    div.innerHTML = `
+      <strong>${escapeHtml(item.name || "Contrôle")}</strong>
+      <span>${escapeHtml(item.message || "")}</span>
+      <small>${escapeHtml(item.status || "unknown")}</small>
+    `;
+    diagnosticsGrid.appendChild(div);
+  }
+}
+
+async function runExportTest() {
+  if (!exportTestResult) return;
+  exportTestResult.classList.remove("hidden");
+  exportTestResult.innerHTML = "<strong>Test exports en cours...</strong>";
+  try {
+    const data = await fetchJsonSafe("/api/system/export-test", { method: "POST" });
+    const items = (data.items || []).map(i => `${i.name}: ${i.status}`).join(" | ");
+    exportTestResult.innerHTML = `<strong>Résultat exports : ${escapeHtml(data.overall)}</strong><span>${escapeHtml(items)}</span>`;
+    await loadDiagnostics();
+  } catch (err) {
+    exportTestResult.innerHTML = `<strong>Erreur test exports</strong><span>${escapeHtml(err.message)}</span>`;
+  }
+}
+
+async function loadReportsCenter() {
+  if (!reportsCenter) return;
+  try {
+    const data = await fetchJsonSafe("/api/reports?limit=50");
+    renderReportsCenter(data.items || []);
+  } catch (err) {
+    reportsCenter.innerHTML = `<p class="notice">Centre de rapports indisponible : ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderReportsCenter(items) {
+  reportsCenter.innerHTML = "";
+  if (!items.length) {
+    reportsCenter.innerHTML = "<p class='notice'>Aucun rapport généré pour le moment.</p>";
+    return;
+  }
+
+  for (const item of items) {
+    const div = document.createElement("div");
+    div.className = "report-row";
+    div.innerHTML = `
+      <div>
+        <strong>${escapeHtml(item.domain)}</strong>
+        <span>${escapeHtml(new Date(item.created_at).toLocaleString())} — Score ${escapeHtml(item.score)} / 1000 — ${escapeHtml(item.level || "")}</span>
+      </div>
+      <div class="report-actions">
+        ${item.excel_exists ? `<a class="button-secondary small" href="${escapeHtml(item.excel_url)}" target="_blank">Excel</a>` : `<span class="report-missing">Excel manquant</span>`}
+        ${item.pdf_exists ? `<a class="button-secondary small gold" href="${escapeHtml(item.pdf_url)}" target="_blank">PDF</a>` : `<span class="report-missing">PDF manquant</span>`}
+        ${item.json_exists ? `<a class="button-secondary small" href="${escapeHtml(item.json_url)}" target="_blank">JSON</a>` : `<span class="report-missing">JSON manquant</span>`}
+      </div>
+    `;
+    reportsCenter.appendChild(div);
+  }
+}
+
+function statusClass(status) {
+  if (status === "ok") return "ok-status";
+  if (status === "warning") return "warning-status";
+  if (status === "error") return "error-status";
+  return "warning-status";
 }
 
 
@@ -382,6 +508,68 @@ async function clearAllAudits() {
   }
 }
 
+
+function renderExecutiveRisk(risk) {
+  if (!executiveRiskBox || !pillarScoresBox || !topRisksBox) return;
+
+  if (!risk || !risk.pillars) {
+    executiveRiskBox.textContent = "N/A";
+    executiveSummaryBox.textContent = "Scoring exécutif indisponible.";
+    pillarScoresBox.innerHTML = "";
+    topRisksBox.innerHTML = "";
+    return;
+  }
+
+  executiveRiskBox.innerHTML = `
+    <span class="executive-score">${escapeHtml(risk.overall_score)} / ${escapeHtml(risk.max_score || 100)}</span>
+    <span class="executive-level">${escapeHtml(risk.risk_level)} — ${escapeHtml(risk.posture)}</span>
+  `;
+  executiveSummaryBox.textContent = risk.board_summary || "";
+
+  pillarScoresBox.innerHTML = "";
+  for (const pillar of risk.pillars || []) {
+    const div = document.createElement("div");
+    const pScore = pillar.score === null || pillar.score === undefined ? 'N/A' : pillar.score;
+    div.className = `pillar-card ${pillar.applicability === 'non_applicable' ? 'pillar-na' : pillarClass(pillar.score)}`;
+    div.innerHTML = `
+      <div class="pillar-top">
+        <strong>${escapeHtml(pillar.label)}</strong>
+        <span>${escapeHtml(pScore)}${pScore === 'N/A' ? '' : ' / 100'}</span>
+      </div>
+      <div class="pillar-bar"><span style="width:${pillar.applicability === 'non_applicable' ? 0 : Math.max(0, Math.min(100, Number(pillar.score) || 0))}%"></span></div>
+      <p>${escapeHtml(pillar.level)} — ${escapeHtml(pillar.findings_count)} constat(s), ${escapeHtml(pillar.critical_high_count)} critique/élevé.</p>
+    `;
+    pillarScoresBox.appendChild(div);
+  }
+
+  topRisksBox.innerHTML = "";
+  const top = risk.top_risks || [];
+  if (!top.length) {
+    topRisksBox.innerHTML = "<p class='notice'>Aucun risque prioritaire de niveau moyen, élevé ou critique.</p>";
+  } else {
+    for (const item of top) {
+      const div = document.createElement("div");
+      div.className = "target";
+      div.innerHTML = `
+        <strong>${escapeHtml(item.severity)} — ${escapeHtml(item.title)}</strong>
+        <span>Catégorie : ${escapeHtml(item.category || "N/A")}</span>
+        <span>Lieu / source : ${escapeHtml(item.location || "N/A")}</span>
+        <span>Action recommandée : ${escapeHtml(item.recommendation || "N/A")}</span>
+      `;
+      topRisksBox.appendChild(div);
+    }
+  }
+}
+
+function pillarClass(score) {
+  const n = Number(score) || 0;
+  if (n >= 85) return "pillar-good";
+  if (n >= 70) return "pillar-ok";
+  if (n >= 55) return "pillar-watch";
+  return "pillar-bad";
+}
+
+
 function renderResults(data) {
   scoreBox.textContent = `${data.score.score} / ${data.score.max_score}`;
   levelBox.textContent = data.score.level;
@@ -414,6 +602,7 @@ function renderResults(data) {
     summaryBox.appendChild(li);
   }
 
+  renderExecutiveRisk(data.executive_risk || {});
   renderWebTargets(data.web_targets || []);
   renderIpInventory(data.ip_inventory || {});
   renderTlsAdvanced(data.tls_score || {});
@@ -426,6 +615,11 @@ function renderResults(data) {
   reportLink.href = data.report_url;
   pdfLink.href = data.pdf_url;
   jsonLink.href = data.json_url;
+  if (data.report_errors && data.report_errors.length) {
+    const li = document.createElement("li");
+    li.textContent = "Alerte exports : " + data.report_errors.join(" | ");
+    summaryBox.appendChild(li);
+  }
   results.classList.remove("hidden");
 }
 

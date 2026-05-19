@@ -1,7 +1,7 @@
 services:
   open-easm-db:
     image: postgres:16-alpine
-    container_name: openeasm-v6-db
+    container_name: openeasm-alpha-db
     environment:
       POSTGRES_DB: open_easm
       POSTGRES_USER: open_easm
@@ -18,13 +18,13 @@ services:
   open-easm-api:
     build:
       context: ./backend
-    container_name: openeasm-v6-api
+    container_name: openeasm-alpha-api
     ports:
       - "8000:8000"
     volumes:
       - ./backend/reports:/app/reports
     environment:
-      - APP_NAME=OpenEASM V6.0.2
+      - APP_NAME=OpenEASM Alpha
       - PUBLIC_BASE_URL=http://localhost:8000
       - DATABASE_URL=postgresql+psycopg2://open_easm:open_easm_change_me@open-easm-db:5432/open_easm
       - RATE_LIMIT_REQUESTS=12

@@ -3,162 +3,212 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OpenEASM V6.0.2</title>
+  <title>OpenEASM Alpha</title>
   <link rel="icon" href="/assets/favicon.png" />
-  <link rel="stylesheet" href="/styles.css?v=6.0.2" />
+  <link rel="stylesheet" href="/styles.css?v=alpha" />
 </head>
 <body>
   <canvas id="matrixCanvas" aria-hidden="true"></canvas>
   <div id="meteorLayer" aria-hidden="true"></div>
   <div class="premium-vignette" aria-hidden="true"></div>
   <div class="grain-layer" aria-hidden="true"></div>
+
   <main class="container">
     <section class="hero">
       <div class="brand">
         <img class="app-logo" src="/assets/logo-wide.png" alt="Logo OpenEASM" />
         <div>
-          <p class="eyebrow">Plateforme EASM marble premium</p>
-          <h1>OpenEASM V6.0.2</h1>
+          <p class="eyebrow">Public EASM Risk Platform</p>
+          <h1>OpenEASM Alpha</h1>
           <p class="subtitle">
-            Audit public non intrusif, domaines vérifiés, historique PostgreSQL, rapports Excel/PDF/JSON et rapports premium et constats localisés, rapports premium et interface marbre doré.
+            Audit public non intrusif, scoring par piliers, rapports PDF/Excel/JSON et constats localisés.
           </p>
         </div>
       </div>
-      <div class="badge">V6.0.2 Marble Premium</div>
+      <div class="badge">Alpha publique</div>
     </section>
 
-    <section id="dashboard" class="dashboard-grid"></section>
+    <nav class="app-menu" aria-label="Navigation OpenEASM">
+      <button class="menu-link active" type="button" data-page-link="audit">Audit & Risque</button>
+      <button class="menu-link" type="button" data-page-link="diagnostics">Diagnostic système</button>
+      <button class="menu-link" type="button" data-page-link="reports">Reporting Center</button>
+    </nav>
 
-    <section class="card main-card">
-      <label for="domain">Domaine à auditer</label>
-      <div class="form-row">
-        <input id="domain" type="text" placeholder="exemple : google.com" autocomplete="off" />
-        <button id="runBtn" disabled>Lancer l'audit</button>
-        <button id="resetBtn" class="secondary" type="button">Nouvel audit</button>
-      </div>
+    <section id="page-audit" class="page active">
+      <section id="dashboard" class="dashboard-grid"></section>
 
-      <div id="termsBox" class="terms-box" role="button" tabindex="0" aria-pressed="false">
-        <input id="termsAcceptedV5" type="checkbox" />
-        <div>
-          <strong>Usage responsable</strong>
-          <p>Je confirme utiliser cet outil dans un cadre autorisé. La V5 réalise uniquement des contrôles publics non intrusifs.</p>
+      <section class="card main-card">
+        <label for="domain">Domaine à auditer</label>
+        <div class="form-row">
+          <input id="domain" type="text" placeholder="exemple : google.com" autocomplete="off" />
+          <button id="runBtn" disabled>Lancer l'audit</button>
+          <button id="resetBtn" class="secondary" type="button">Nouvel audit</button>
         </div>
-      </div>
 
-      <p id="termsStatus" class="terms-status ko">Usage responsable non accepté : le bouton d’audit est désactivé.</p>
-      <p class="notice">Aucun scan de ports, aucune exploitation, aucun bruteforce. Les contrôles HTTP/TLS sont bloqués si la cible résout vers une IP non publique.</p>
-    </section>
-
-
-    <section class="card verify-card">
-      <div class="section-header">
-        <h2>Vérification de propriété du domaine</h2>
-        <span id="verificationBadge" class="pill">Non démarrée</span>
-      </div>
-      <p class="notice">
-        La vérification DNS permet de prouver que vous contrôlez le domaine. Elle servira de base aux futurs audits avancés.
-      </p>
-      <div class="actions verify-actions">
-        <button id="startVerificationBtn" class="secondary" type="button">Générer le TXT</button>
-        <button id="checkVerificationBtn" class="secondary" type="button">Vérifier le TXT</button>
-        <button id="deleteVerificationBtn" class="danger" type="button">Supprimer la vérification</button>
-      </div>
-      <div id="verificationResult" class="verify-result hidden"></div>
-    </section>
-
-    <section id="loading" class="card hidden">
-      <h2>Audit en cours...</h2>
-      <p>Analyse DNS, messagerie, HTTPS/TLS, inventaire IP, CTI léger, CVE passives et sous-domaines publics.</p>
-    </section>
-
-    <section id="error" class="card error hidden"></section>
-
-    <section id="results" class="hidden">
-      <div class="grid">
-        <div class="card score-card">
-          <p class="eyebrow">Score global</p>
-          <div id="score" class="score">-</div>
-          <div id="level" class="level">-</div>
-          <div id="profile" class="profile">-</div>
-        </div>
-        <div class="card">
-          <p class="eyebrow">Synthèse</p>
-          <ul id="summary"></ul>
-          <div class="actions">
-            <a id="reportLink" class="button-secondary" href="#" target="_blank">Excel</a>
-            <a id="pdfLink" class="button-secondary gold" href="#" target="_blank">PDF</a>
-            <a id="jsonLink" class="button-secondary" href="#" target="_blank">JSON</a>
+        <div id="termsBox" class="terms-box" role="button" tabindex="0" aria-pressed="false">
+          <input id="termsAcceptedV6" type="checkbox" />
+          <div>
+            <strong>Usage responsable</strong>
+            <p>Je confirme utiliser cet outil dans un cadre autorisé. OpenEASM réalise uniquement des contrôles publics non intrusifs.</p>
           </div>
         </div>
-      </div>
 
-      <section id="comparisonCard" class="card hidden">
+        <p id="termsStatus" class="terms-status ko">Usage responsable non accepté : le bouton d’audit est désactivé.</p>
+        <p class="notice">Aucun scan de ports, aucune exploitation, aucun bruteforce. Les contrôles HTTP/TLS sont bloqués si la cible résout vers une IP non publique.</p>
+      </section>
+
+      <section class="card verify-card">
         <div class="section-header">
-          <h2>Comparaison avec l’audit précédent</h2>
-          <span id="scoreDelta" class="pill">-</span>
+          <h2>Vérification de propriété du domaine</h2>
+          <span id="verificationBadge" class="pill">Non démarrée</span>
         </div>
-        <div id="comparison" class="target-list"></div>
+        <p class="notice">
+          La vérification DNS permet de prouver que vous contrôlez le domaine. Elle servira de base aux futurs audits avancés.
+        </p>
+        <div class="actions verify-actions">
+          <button id="startVerificationBtn" class="secondary" type="button">Générer le TXT</button>
+          <button id="checkVerificationBtn" class="secondary" type="button">Vérifier le TXT</button>
+          <button id="deleteVerificationBtn" class="danger" type="button">Supprimer la vérification</button>
+        </div>
+        <div id="verificationResult" class="verify-result hidden"></div>
       </section>
 
-      <section class="card priority-card">
-        <div class="section-header"><h2>Constats priorisés</h2></div>
-        <div id="findings"></div>
+      <section id="loading" class="card hidden">
+        <h2>Audit en cours...</h2>
+        <p>Analyse DNS, messagerie, HTTPS/TLS, inventaire IP, CTI léger, CVE passives et sous-domaines publics.</p>
       </section>
 
-      <section class="card priority-card">
-        <div class="section-header"><h2>Sous-domaines publics</h2><span id="subCount" class="pill">0 détecté</span></div>
-        <div id="subdomains" class="chips"></div>
+      <section id="error" class="card error hidden"></section>
+
+      <section id="results" class="hidden">
+        <div class="grid">
+          <div class="card score-card">
+            <p class="eyebrow">Score global</p>
+            <div id="score" class="score">-</div>
+            <div id="level" class="level">-</div>
+            <div id="profile" class="profile">-</div>
+          </div>
+          <div class="card executive-card">
+            <p class="eyebrow">Risque exécutif</p>
+            <div id="executiveRisk" class="executive-risk">-</div>
+            <div id="executiveSummary" class="notice"></div>
+            <div class="actions">
+              <a id="reportLink" class="button-secondary" href="#" target="_blank">Excel</a>
+              <a id="pdfLink" class="button-secondary gold" href="#" target="_blank">PDF</a>
+              <a id="jsonLink" class="button-secondary" href="#" target="_blank">JSON</a>
+            </div>
+          </div>
+        </div>
+
+        <section class="card executive-card">
+          <div class="section-header"><h2>Scoring par piliers</h2><span class="pill">Executive scoring</span></div>
+          <div id="pillarScores" class="pillar-grid"></div>
+        </section>
+
+        <section class="card priority-card">
+          <div class="section-header"><h2>Top risques direction</h2><span class="pill">Priorités décisionnelles</span></div>
+          <div id="topRisks" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <p class="eyebrow">Synthèse technique</p>
+          <ul id="summary"></ul>
+        </section>
+
+        <section id="comparisonCard" class="card hidden">
+          <div class="section-header">
+            <h2>Comparaison avec l’audit précédent</h2>
+            <span id="scoreDelta" class="pill">-</span>
+          </div>
+          <div id="comparison" class="target-list"></div>
+        </section>
+
+        <section class="card priority-card">
+          <div class="section-header"><h2>Constats priorisés</h2></div>
+          <div id="findings"></div>
+        </section>
+
+        <section class="card priority-card">
+          <div class="section-header"><h2>Sous-domaines publics</h2><span id="subCount" class="pill">0 détecté</span></div>
+          <div id="subdomains" class="chips"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>Inventaire IP</h2><span id="ipCount" class="pill">0 IP</span></div>
+          <p id="ipInventoryNote" class="notice"></p>
+          <div id="ipInventory" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>CTI / Réputation</h2><span class="pill">Résumé DNSBL</span></div>
+          <div id="ctiBox" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>Cibles web testées</h2><span id="webTargetCount" class="pill">0 cible</span></div>
+          <div id="webTargets" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>TLS/SSL avancé</h2><span id="tlsScoreBadge" class="pill">- / 100</span></div>
+          <div id="tlsAdvanced" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>CVE potentielles passives</h2><span id="cveCount" class="pill">0 détectée</span></div>
+          <div id="passiveCves" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi Alpha</span></div>
+          <div id="patchingBox" class="target-list"></div>
+        </section>
       </section>
 
       <section class="card">
-        <div class="section-header"><h2>Inventaire IP</h2><span id="ipCount" class="pill">0 IP</span></div>
-        <p id="ipInventoryNote" class="notice"></p>
-        <div id="ipInventory" class="target-list"></div>
+        <div class="section-header">
+          <h2>Domaines vérifiés</h2>
+          <button id="refreshVerifiedBtn" class="secondary small" type="button">Rafraîchir</button>
+        </div>
+        <div id="verifiedDomains" class="history"></div>
       </section>
 
       <section class="card">
-        <div class="section-header"><h2>CTI / Réputation</h2><span class="pill">Résumé DNSBL</span></div>
-        <div id="ctiBox" class="target-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header"><h2>Cibles web testées</h2><span id="webTargetCount" class="pill">0 cible</span></div>
-        <div id="webTargets" class="target-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header"><h2>TLS/SSL avancé</h2><span id="tlsScoreBadge" class="pill">- / 100</span></div>
-        <div id="tlsAdvanced" class="target-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header"><h2>CVE potentielles passives</h2><span id="cveCount" class="pill">0 détectée</span></div>
-        <div id="passiveCves" class="target-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi V5</span></div>
-        <div id="patchingBox" class="target-list"></div>
+        <div class="section-header">
+          <h2>Historique serveur PostgreSQL</h2>
+          <div class="actions"><button id="refreshHistoryBtn" class="secondary small" type="button">Rafraîchir</button><button id="clearAllBtn" class="danger small" type="button">Tout supprimer</button></div>
+        </div>
+        <div id="history" class="history"></div>
       </section>
     </section>
 
-    <section class="card">
-      <div class="section-header">
-        <h2>Domaines vérifiés</h2>
-        <button id="refreshVerifiedBtn" class="secondary small" type="button">Rafraîchir</button>
-      </div>
-      <div id="verifiedDomains" class="history"></div>
+    <section id="page-diagnostics" class="page">
+      <section class="card stability-card">
+        <div class="section-header">
+          <h2>Diagnostic système</h2>
+          <div class="actions compact-actions">
+            <button id="refreshDiagnosticsBtn" class="secondary small" type="button">Rafraîchir</button>
+            <button id="testExportsBtn" class="secondary small" type="button">Tester les exports</button>
+          </div>
+        </div>
+        <p class="notice">Vérifie l’état de l’API, PostgreSQL, DNS, dossier reports, PDF, Excel, JSON et sources passives.</p>
+        <div id="diagnosticsGrid" class="diagnostics-grid"></div>
+        <div id="exportTestResult" class="target hidden"></div>
+      </section>
     </section>
 
-    <section class="card">
-      <div class="section-header">
-        <h2>Historique serveur PostgreSQL</h2>
-        <div class="actions"><button id="refreshHistoryBtn" class="secondary small" type="button">Rafraîchir</button><button id="clearAllBtn" class="danger small" type="button">Tout supprimer</button></div>
-      </div>
-      <div id="history" class="history"></div>
+    <section id="page-reports" class="page">
+      <section class="card reports-card">
+        <div class="section-header">
+          <h2>Reporting Center</h2>
+          <button id="refreshReportsBtn" class="secondary small" type="button">Rafraîchir</button>
+        </div>
+        <p class="notice">Retrouve les anciens exports PDF, Excel et JSON générés par les audits.</p>
+        <div id="reportsCenter" class="reports-center"></div>
+      </section>
     </section>
   </main>
 
-  <script src="/app.js?v=6.0.2"></script>
+  <script src="/app.js?v=alpha"></script>
 </body>
 </html>
