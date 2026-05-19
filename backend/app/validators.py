@@ -43,9 +43,9 @@ def normalize_domain(raw: str) -> str:
 
     try:
         ipaddress.ip_address(value)
-        raise ValueError("La V4.3 accepte uniquement des noms de domaine, pas des adresses IP.")
+        raise ValueError("La V5 accepte uniquement des noms de domaine, pas des adresses IP.")
     except ValueError as exc:
-        if "La V4.3 accepte" in str(exc):
+        if "La V5 accepte" in str(exc):
             raise
 
     if not DOMAIN_RE.match(value):

@@ -1,13 +1,13 @@
 services:
   open-easm-db:
     image: postgres:16-alpine
-    container_name: open-easm-v4.3_1-db
+    container_name: openeasm-v6-db
     environment:
       POSTGRES_DB: open_easm
       POSTGRES_USER: open_easm
       POSTGRES_PASSWORD: open_easm_change_me
     volumes:
-      - open_easm_pgdata:/var/lib/postgresql/data
+      - open_easm_v6_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U open_easm -d open_easm"]
       interval: 5s
@@ -18,13 +18,13 @@ services:
   open-easm-api:
     build:
       context: ./backend
-    container_name: open-easm-v4.3_1-api
+    container_name: openeasm-v6-api
     ports:
       - "8000:8000"
     volumes:
       - ./backend/reports:/app/reports
     environment:
-      - APP_NAME=Open EASM V4.3
+      - APP_NAME=OpenEASM V6.0.2
       - PUBLIC_BASE_URL=http://localhost:8000
       - DATABASE_URL=postgresql+psycopg2://open_easm:open_easm_change_me@open-easm-db:5432/open_easm
       - RATE_LIMIT_REQUESTS=12
@@ -35,4 +35,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  open_easm_pgdata:
+  open_easm_v6_pgdata:

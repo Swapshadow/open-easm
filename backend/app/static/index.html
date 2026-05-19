@@ -3,24 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Open EASM V4.3</title>
+  <title>OpenEASM V6.0.2</title>
   <link rel="icon" href="/assets/favicon.png" />
-  <link rel="stylesheet" href="/styles.css?v=4.3.0" />
+  <link rel="stylesheet" href="/styles.css?v=6.0.2" />
 </head>
 <body>
+  <canvas id="matrixCanvas" aria-hidden="true"></canvas>
+  <div id="meteorLayer" aria-hidden="true"></div>
+  <div class="premium-vignette" aria-hidden="true"></div>
+  <div class="grain-layer" aria-hidden="true"></div>
   <main class="container">
     <section class="hero">
       <div class="brand">
-        <img class="app-logo" src="/assets/logo-wide.png" alt="Logo Open EASM" />
+        <img class="app-logo" src="/assets/logo-wide.png" alt="Logo OpenEASM" />
         <div>
-          <p class="eyebrow">Plateforme EASM publique & domaines vérifiés</p>
-          <h1>Open EASM V4.3</h1>
+          <p class="eyebrow">Plateforme EASM marble premium</p>
+          <h1>OpenEASM V6.0.2</h1>
           <p class="subtitle">
-            Audit public non intrusif, historique PostgreSQL, comparaison, rapports Excel/PDF/JSON et vérification de propriété par DNS TXT.
+            Audit public non intrusif, domaines vérifiés, historique PostgreSQL, rapports Excel/PDF/JSON et rapports premium et constats localisés, rapports premium et interface marbre doré.
           </p>
         </div>
       </div>
-      <div class="badge">V4.3 Intelligence</div>
+      <div class="badge">V6.0.2 Marble Premium</div>
     </section>
 
     <section id="dashboard" class="dashboard-grid"></section>
@@ -34,10 +38,10 @@
       </div>
 
       <div id="termsBox" class="terms-box" role="button" tabindex="0" aria-pressed="false">
-        <input id="termsAcceptedV4.3" type="checkbox" />
+        <input id="termsAcceptedV5" type="checkbox" />
         <div>
           <strong>Usage responsable</strong>
-          <p>Je confirme utiliser cet outil dans un cadre autorisé. La V4.3 réalise uniquement des contrôles publics non intrusifs.</p>
+          <p>Je confirme utiliser cet outil dans un cadre autorisé. La V5 réalise uniquement des contrôles publics non intrusifs.</p>
         </div>
       </div>
 
@@ -133,7 +137,7 @@
       </section>
 
       <section class="card">
-        <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi V4.3</span></div>
+        <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi V5</span></div>
         <div id="patchingBox" class="target-list"></div>
       </section>
     </section>
@@ -155,6 +159,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=4.3.0"></script>
+  <script src="/app.js?v=6.0.2"></script>
 </body>
 </html>

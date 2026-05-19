@@ -1,10 +1,32 @@
+
+// -----------------------------------------------------------------------------
+// OpenEASM V6 visual layer: Matrix 0/1 + premium meteors
+// -----------------------------------------------------------------------------
+(function(){
+  function initMatrixRain(){
+    const canvas=document.getElementById('matrixCanvas');
+    if(!canvas||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const ctx=canvas.getContext('2d'); let w=0,h=0,cols=0,drops=[]; const fs=15, chars=['0','1'];
+    function resize(){const r=Math.min(window.devicePixelRatio||1,2);w=innerWidth;h=innerHeight;canvas.width=Math.floor(w*r);canvas.height=Math.floor(h*r);canvas.style.width=w+'px';canvas.style.height=h+'px';ctx.setTransform(r,0,0,r,0,0);cols=Math.floor(w/fs);drops=Array.from({length:cols},()=>Math.random()*-h);}
+    function draw(){ctx.fillStyle='rgba(3,0,0,.085)';ctx.fillRect(0,0,w,h);ctx.font=fs+'px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';for(let i=0;i<drops.length;i++){const ch=chars[(Math.random()*2)|0];const x=i*fs,y=drops[i]*fs;ctx.fillStyle=Math.random()>.965?'rgba(255,226,154,.82)':'rgba(255,29,46,.34)';ctx.fillText(ch,x,y);if(y>h+Math.random()*1000)drops[i]=Math.random()*-40;drops[i]+=0.45+Math.random()*0.55;}requestAnimationFrame(draw)}
+    addEventListener('resize',resize,{passive:true});resize();draw();
+  }
+  function initMeteors(){
+    const layer=document.getElementById('meteorLayer');
+    if(!layer||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    function spawn(){const m=document.createElement('span');m.className='meteor';const x=Math.random()*innerWidth+innerWidth*.15,y=Math.random()*innerHeight*.42-80,d=1.9+Math.random()*2.8,tail=90+Math.random()*170;m.style.left=x+'px';m.style.top=y+'px';m.style.setProperty('--duration',d+'s');m.style.setProperty('--tail',tail+'px');layer.appendChild(m);setTimeout(()=>m.remove(),d*1000+300)}
+    function schedule(){spawn();setTimeout(schedule,1100+Math.random()*2600)} setTimeout(schedule,900);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{initMatrixRain();initMeteors();});else{initMatrixRain();initMeteors();}
+})();
+
 const runBtn = document.getElementById("runBtn");
 const resetBtn = document.getElementById("resetBtn");
 const refreshHistoryBtn = document.getElementById("refreshHistoryBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const domainInput = document.getElementById("domain");
 const termsBox = document.getElementById("termsBox");
-const termsAcceptedInput = document.getElementById("termsAcceptedV4.3");
+const termsAcceptedInput = document.getElementById("termsAcceptedV5");
 const termsStatus = document.getElementById("termsStatus");
 const loading = document.getElementById("loading");
 const errorBox = document.getElementById("error");
@@ -43,7 +65,38 @@ const verificationResult = document.getElementById("verificationResult");
 const refreshVerifiedBtn = document.getElementById("refreshVerifiedBtn");
 const verifiedDomainsBox = document.getElementById("verifiedDomains");
 
+
 let termsAccepted = false;
+
+async function fetchJsonSafe(url, options = {}) {
+  const response = await fetch(url, options);
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+
+  let data = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (err) {
+      throw new Error(`Réponse JSON invalide (${response.status}) : ${text.slice(0, 240)}`);
+    }
+  } else {
+    // Fixes: Unexpected token 'I', "Internal S"... is not valid JSON
+    const msg = text && text.trim()
+      ? text.trim().slice(0, 500)
+      : `Réponse non JSON du serveur (${response.status})`;
+    if (!response.ok) {
+      throw new Error(msg);
+    }
+    throw new Error(`Réponse non JSON inattendue : ${msg}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(data.detail || data.message || `Erreur HTTP ${response.status}`);
+  }
+  return data;
+}
+
 
 runBtn.addEventListener("click", runAudit);
 resetBtn.addEventListener("click", resetAudit);
@@ -107,24 +160,21 @@ async function runAudit() {
   runBtn.textContent = "Audit en cours...";
 
   try {
-    const response = await fetch("/api/audit", {
+    const data = await fetchJsonSafe("/api/audit", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Open-EASM-Version": "4.3.0"
+        "X-OpenEASM-Version": "6.0.2"
       },
       body: JSON.stringify({ domain, accepted_terms: true }),
     });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || "Erreur lors de l'audit.");
 
     renderResults(data);
     await loadComparison(data.domain);
     await loadServerData();
     await loadVerifiedDomains();
   } catch (err) {
-    errorBox.textContent = err.message;
+    errorBox.textContent = err.message || "Erreur inconnue pendant l'audit.";
     errorBox.classList.remove("hidden");
   } finally {
     loading.classList.add("hidden");
@@ -155,13 +205,11 @@ async function startDomainVerification() {
     return;
   }
   try {
-    const res = await fetch("/api/domains/verification/start", {
+    const data = await fetchJsonSafe("/api/domains/verification/start", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({domain})
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Impossible de démarrer la vérification.");
     renderVerification(data);
     await loadVerifiedDomains();
   } catch (err) {
@@ -176,9 +224,7 @@ async function checkDomainVerification() {
     return;
   }
   try {
-    const res = await fetch(`/api/domains/${encodeURIComponent(domain)}/verification/check`, {method: "POST"});
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Impossible de vérifier le domaine.");
+    const data = await fetchJsonSafe(`/api/domains/${encodeURIComponent(domain)}/verification/check`, {method: "POST"});
     renderVerification(data);
     await loadVerifiedDomains();
   } catch (err) {
@@ -194,9 +240,7 @@ async function deleteDomainVerification() {
   }
   if (!confirm(`Supprimer la vérification DNS pour ${domain} ?`)) return;
   try {
-    const res = await fetch(`/api/domains/${encodeURIComponent(domain)}/verification`, {method: "DELETE"});
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Impossible de supprimer la vérification.");
+    const data = await fetchJsonSafe(`/api/domains/${encodeURIComponent(domain)}/verification`, {method: "DELETE"});
     verificationResult.classList.add("hidden");
     setVerificationBadge({status: "not_started"});
     await loadVerifiedDomains();
@@ -236,9 +280,7 @@ function setVerificationBadge(data) {
 
 async function loadVerifiedDomains() {
   try {
-    const res = await fetch("/api/domains/verified");
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await fetchJsonSafe("/api/domains/verified");
     renderVerifiedDomains(data);
   } catch {
     verifiedDomainsBox.innerHTML = "<p class='notice'>Domaines vérifiés indisponibles.</p>";
@@ -564,24 +606,27 @@ function renderPatching(patching) {
   }
 }
 
+
 function renderSubdomains(sub) {
   const list = sub.subdomains || [];
-  subCount.textContent = `${sub.count || 0} détecté(s)`;
+  subCount.textContent = `${sub.count || list.length || 0} détecté(s)`;
   subdomainsBox.innerHTML = "";
+
   if (sub.error) {
-    const span = document.createElement("span");
-    span.className = "chip";
-    span.textContent = `Source indisponible : ${sub.error}`;
-    subdomainsBox.appendChild(span);
-    return;
+    const error = document.createElement("div");
+    error.className = "subdomain-warning";
+    error.innerHTML = `<strong>Source passive limitée :</strong> ${escapeHtml(shortenText(sub.error, 260))}`;
+    subdomainsBox.appendChild(error);
   }
+
   if (list.length === 0) {
     const span = document.createElement("span");
     span.className = "chip";
-    span.textContent = "Aucun sous-domaine affiché";
+    span.textContent = sub.error ? "Aucun sous-domaine affichable malgré les sources alternatives." : "Aucun sous-domaine affiché";
     subdomainsBox.appendChild(span);
     return;
   }
+
   for (const name of list) {
     const span = document.createElement("span");
     span.className = "chip";
@@ -593,18 +638,23 @@ function renderSubdomains(sub) {
 function renderFindings(findings) {
   findingsBox.innerHTML = "";
   if (!findings || findings.length === 0) {
-    findingsBox.innerHTML = "<p>Aucun constat notable sur les contrôles V4.3.</p>";
+    findingsBox.innerHTML = "<p>Aucun constat notable sur les contrôles V6.</p>";
     return;
   }
+
   const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
   findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+
   for (const f of findings) {
+    const loc = f.location || {};
+    const locText = loc.display || loc.path || loc.record || loc.hostname || loc.control || "N/A";
     const div = document.createElement("div");
     div.className = "finding";
     div.innerHTML = `
       <span class="sev ${escapeHtml(f.severity || "info")}">${escapeHtml(f.severity || "info")}</span>
       <h3>${escapeHtml(f.title || "")}</h3>
       <p><strong>Catégorie :</strong> ${escapeHtml(f.category || "N/A")}</p>
+      <p><strong>Lieu / source :</strong> ${escapeHtml(locText)}</p>
       <p>${escapeHtml(f.description || "")}</p>
       <p><strong>Recommandation :</strong> ${escapeHtml(f.recommendation || "")}</p>
     `;
@@ -619,6 +669,11 @@ function resetAudit() {
   loading.classList.add("hidden");
   comparisonCard.classList.add("hidden");
   domainInput.focus();
+}
+
+function shortenText(str, maxLength = 180) {
+  const value = String(str || "");
+  return value.length > maxLength ? value.slice(0, maxLength - 1) + "…" : value;
 }
 
 function escapeHtml(str) {

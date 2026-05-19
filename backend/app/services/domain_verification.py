@@ -48,7 +48,7 @@ def start_verification(db: Session, domain: str) -> VerifiedDomain:
     record.last_checked_at = None
     record.last_error = None
 
-    db.merge(record)
+    record = db.merge(record)
     db.commit()
     db.refresh(record)
     return record

@@ -49,5 +49,5 @@ def build_patching_sla(findings: list[dict], now_iso: str | None = None) -> dict
             "low": "< 90 jours",
             "info": "suivi informationnel",
         },
-        "note": "La V4.3 prépare le suivi patching avec des SLA cibles. La mesure réelle de cadence de correction nécessite un historique serveur en base de données.",
+        "note": "La V5 prépare le suivi patching avec des SLA cibles. La mesure réelle de cadence de correction nécessite un historique serveur en base de données.",
     }

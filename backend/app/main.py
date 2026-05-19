@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from uuid import uuid4
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,7 @@ from app.services.tls_scoring import score_tls
 from app.services.cve_passive import detect_passive_cves
 from app.services.cti_audit import audit_cti
 from app.services.patching_sla import build_patching_sla
+from app.services.finding_location import enrich_findings_locations
 from app.reports.excel_report import generate_excel_report
 from app.reports.json_report import generate_json_report
 from app.reports.pdf_report import generate_pdf_report
@@ -30,9 +32,9 @@ from app.services.storage import save_audit, list_audits, get_audit_record, dash
 from app.services.domain_verification import start_verification, check_verification, get_domain_status, list_verified_domains, delete_verification, serialize_verification
 
 app = FastAPI(
-    title="Open EASM V4.3",
+    title="OpenEASM V6.0.2",
     description="Audit EASM public non intrusif : DNS, mail, TLS, web headers, www automatique, sous-domaines passifs, inventaire IP, CTI léger, CVE passives et rapports Excel/JSON.",
-    version="4.3.0",
+    version="6.0.2",
 )
 
 
@@ -40,6 +42,19 @@ app = FastAPI(
 @app.on_event("startup")
 def startup_event():
     init_db_with_retry()
+
+
+
+@app.exception_handler(Exception)
+async def openeasm_unhandled_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Erreur interne OpenEASM pendant le traitement.",
+            "error": str(exc),
+            "type": exc.__class__.__name__,
+        },
+    )
 
 AUDITS: dict[str, dict] = {}
 REPORT_DIR = Path("/app/reports")
@@ -53,7 +68,7 @@ class DomainVerificationRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "open-easm-v4.3_1"}
+    return {"status": "ok", "service": "openeasm-v6_2"}
 
 @app.post("/api/audit")
 async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_db)):
@@ -112,6 +127,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     )
     domain_profile = classify_domain(dns_result, mail_result, web_result)
     findings = adjust_findings_for_profile(raw_findings, domain_profile)
+    findings = enrich_findings_locations(findings, domain)
     score = compute_score(findings, domain_profile)
     patching_sla = build_patching_sla(findings, created_at)
 
@@ -120,7 +136,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "id": audit_id,
         "domain": domain,
         "created_at": created_at,
-        "mode": "public_non_intrusive_v4_3",
+        "mode": "public_non_intrusive_v6",
         "verification": verification_status,
         "domain_profile": domain_profile,
         "dns": dns_result,

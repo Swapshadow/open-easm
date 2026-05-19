@@ -1,56 +1,52 @@
-# Open EASM V4.3
+# OpenEASM V6.0.2
 
-Open EASM V4.3 corrige les points remontés sur la V4.2.
+Version corrective de la V6.0.1.
 
-## Nouveautés V4.3
+## Corrections
 
-- Sous-domaines publics améliorés :
-  - `crt.sh` ;
-  - HackerTarget Hostsearch ;
-  - CertSpotter ;
-  - fallback DNS sur noms courants.
-- Inventaire IP moins bruyant :
-  - classement des IP par périmètre ;
-  - exposition principale ;
-  - prestataires tiers ;
-  - support ;
-  - IP non publiques.
-- Affichage IP priorisé :
-  - les IP cœur sont affichées en premier ;
-  - les IP de prestataires tiers sont résumées ;
-  - les IP non publiques restent visibles.
-- CTI / réputation moins verbeux :
-  - résumé global ;
-  - IP listées ou en erreur affichées en priorité ;
-  - IP de prestataires tiers masquées du détail pour éviter le bruit.
-- Sections déplacées plus haut :
-  - constats priorisés ;
-  - sous-domaines publics ;
-  - inventaire IP.
-- Logo remis à l’échelle.
-- Fond rouge premium ajusté.
-- Toutes les fonctionnalités V4.2 sont conservées :
-  - PostgreSQL ;
-  - historique ;
-  - suppression audits ;
-  - vérification DNS TXT ;
-  - rapports Excel/PDF/JSON.
+### 1. Audit bloqué par l'export Excel
+
+Erreur corrigée :
+
+```text
+ValueError: Cannot convert {'countryName': 'US', 'organizationName': "Let's Encrypt", 'commonName': 'R13'} to Excel
+```
+
+Cause : OpenPyXL ne peut pas écrire directement un dictionnaire Python dans une cellule Excel.
+
+Correction : conversion automatique des `dict`, `list`, `tuple`, `set` en texte JSON lisible avant écriture Excel.
+
+### 2. Vérification DNS TXT bloquée
+
+Erreur corrigée :
+
+```text
+sqlalchemy.exc.InvalidRequestError: Instance '<VerifiedDomain ...>' is not persistent within this Session
+```
+
+Cause : `db.merge(record)` retourne une nouvelle instance persistante qu'il faut réutiliser.
+
+Correction :
+
+```python
+record = db.merge(record)
+db.commit()
+db.refresh(record)
+```
+
+### 3. Audit plus robuste
+
+La génération Excel/PDF ne bloque plus complètement le retour JSON de l'audit. Si un export échoue, l'audit peut quand même s'afficher dans l'interface avec l'erreur reportée dans `reports.errors`.
 
 ## Installation
 
-Arrêter la V4.2 :
-
 ```bash
-cd ~/open-easm-v4.2
+cd ~/openeasm-v6.0.1
 docker-compose down
-```
 
-Installer la V4.3 :
-
-```bash
 cd ~
-unzip open-easm-v4.3.zip
-cd open-easm-v4.3
+unzip openeasm-v6.0.2.zip
+cd openeasm-v6.0.2
 docker-compose up -d --build
 ```
 
@@ -60,11 +56,9 @@ Ouvrir :
 http://localhost:8000
 ```
 
-## Remise à zéro complète de la base
+## Vérification
 
 ```bash
-docker-compose down -v
-docker-compose up -d --build
+docker-compose ps
+docker-compose logs -f open-easm-api
 ```
-
-Attention : `down -v` supprime le volume PostgreSQL de la version.
