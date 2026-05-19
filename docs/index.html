@@ -3,124 +3,372 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OpenEASM - External Attack Surface Management</title>
+  <meta name="description" content="OpenEASM Alpha : plateforme open source d'External Attack Surface Management public non intrusif." />
+  <title>OpenEASM Alpha | EASM open source</title>
   <style>
+    :root {
+      --bg: #f8f4ec;
+      --bg-soft: #fffdf8;
+      --text: #1f1a16;
+      --muted: #5f544a;
+      --gold: #be8f37;
+      --gold-soft: #e9d6ab;
+      --red: #a2191f;
+      --red-soft: #d44a52;
+      --card: rgba(255, 255, 255, 0.82);
+      --shadow: 0 18px 42px rgba(32, 17, 8, 0.08);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0b0f19;
-      color: #f5f7fa;
+      font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1800px 800px at 80% -10%, rgba(190, 143, 55, 0.18), transparent 60%),
+        radial-gradient(900px 500px at -20% 20%, rgba(162, 25, 31, 0.08), transparent 60%),
+        linear-gradient(150deg, rgba(233, 214, 171, 0.3), transparent 30%),
+        repeating-linear-gradient(
+          35deg,
+          rgba(205, 189, 163, 0.2) 0,
+          rgba(205, 189, 163, 0.2) 2px,
+          rgba(255, 255, 255, 0.65) 2px,
+          rgba(255, 255, 255, 0.65) 22px
+        ),
+        var(--bg);
+      line-height: 1.6;
+      min-height: 100vh;
     }
 
-    header {
-      padding: 80px 20px;
-      text-align: center;
-      background: linear-gradient(135deg, #111827, #7f1d1d);
+    #matrix-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.14;
     }
 
-    h1 {
-      font-size: 3rem;
-      margin-bottom: 10px;
-    }
-
-    .subtitle {
-      font-size: 1.2rem;
-      color: #d1d5db;
+    .site-wrap {
+      position: relative;
+      z-index: 1;
     }
 
     .container {
-      max-width: 1100px;
-      margin: auto;
-      padding: 40px 20px;
+      width: min(1120px, 92vw);
+      margin: 0 auto;
     }
 
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
+    .hero {
+      padding: 96px 0 72px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      letter-spacing: 0.3px;
+    }
+
+    .subtitle {
+      margin: 12px 0 20px;
+      color: var(--red);
+      font-weight: 600;
+      font-size: clamp(1.02rem, 2vw, 1.24rem);
+    }
+
+    .hero p {
+      margin: 0 auto;
+      max-width: 840px;
+      color: var(--muted);
+      font-size: clamp(1rem, 1.5vw, 1.12rem);
+    }
+
+    .actions {
       margin-top: 30px;
-    }
-
-    .card {
-      background: #111827;
-      border: 1px solid #374151;
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-    }
-
-    .card h3 {
-      color: #f87171;
-      margin-top: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
     }
 
     .btn {
-      display: inline-block;
-      margin-top: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 12px 20px;
-      background: #dc2626;
-      color: white;
+      border-radius: 999px;
       text-decoration: none;
-      border-radius: 10px;
-      font-weight: bold;
+      font-weight: 700;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn.primary {
+      background: linear-gradient(120deg, var(--red), #7f1016);
+      color: #fff;
+      box-shadow: 0 10px 25px rgba(127, 16, 22, 0.24);
+    }
+
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--text);
+      border-color: rgba(190, 143, 55, 0.35);
+    }
+
+    .btn:hover,
+    .btn:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 24px rgba(52, 29, 17, 0.16);
+    }
+
+    section {
+      padding: 24px 0 12px;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(1.4rem, 3vw, 2rem);
+    }
+
+    .section-intro {
+      margin: 0 0 24px;
+      color: var(--muted);
+      max-width: 900px;
+    }
+
+    .cards,
+    .features-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .cards {
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(2px);
+      border: 1px solid rgba(190, 143, 55, 0.35);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .card h3 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      color: var(--red);
+      font-size: 1.15rem;
+    }
+
+    .features-grid {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+
+    .feature {
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(190, 143, 55, 0.35);
+      background: rgba(255, 255, 255, 0.75);
+      font-weight: 600;
+      text-align: center;
+      color: #2c241d;
+      box-shadow: 0 8px 20px rgba(32, 17, 8, 0.06);
+    }
+
+    .highlight {
+      border-left: 4px solid var(--gold);
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: 12px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    pre {
+      margin: 0;
+      padding: 18px;
+      background: #171412;
+      color: #f3e8d7;
+      border-radius: 14px;
+      overflow-x: auto;
+      border: 1px solid rgba(233, 214, 171, 0.35);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .open-source {
+      margin: 10px 0 26px;
+      color: var(--muted);
     }
 
     footer {
+      margin-top: 18px;
+      padding: 24px 0 38px;
+      border-top: 1px solid rgba(190, 143, 55, 0.33);
+      color: #43382f;
+      font-size: 0.95rem;
       text-align: center;
-      padding: 30px;
-      color: #9ca3af;
-      border-top: 1px solid #1f2937;
+    }
+
+    footer a {
+      color: var(--red);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    @media (max-width: 720px) {
+      .hero {
+        padding-top: 72px;
+      }
+
+      .card,
+      .feature,
+      .highlight,
+      pre {
+        border-radius: 12px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .btn { transition: none; }
+      #matrix-bg { display: none; }
     }
   </style>
 </head>
 <body>
+  <canvas id="matrix-bg" aria-hidden="true"></canvas>
 
-<header>
-  <h1>OpenEASM</h1>
-  <p class="subtitle">Plateforme open source d’External Attack Surface Management</p>
-  <a class="btn" href="https://github.com/Swapshadow/open-easm">Voir le projet GitHub</a>
-</header>
+  <div class="site-wrap">
+    <header class="hero">
+      <div class="container">
+        <h1>OpenEASM Alpha</h1>
+        <p class="subtitle">External Attack Surface Management public non intrusif</p>
+        <p>Auditez l’exposition Internet d’un domaine grâce à des contrôles publics : DNS, messagerie, TLS/SSL, headers web, sous-domaines, inventaire IP, CTI légère et scoring de risque.</p>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/Swapshadow/open-easm" target="_blank" rel="noopener noreferrer">Voir le projet GitHub</a>
+          <a class="btn secondary" href="#installation">Installation rapide</a>
+        </div>
+      </div>
+    </header>
 
-<main class="container">
-  <h2>Présentation</h2>
-  <p>
-    OpenEASM est un outil permettant d’analyser l’exposition externe d’une organisation :
-    domaines, ports ouverts, services exposés, certificats TLS, technologies détectées,
-    risques et rapports.
-  </p>
+    <main class="container">
+      <section aria-labelledby="why-title">
+        <h2 id="why-title">Pourquoi OpenEASM ?</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Cartographie d’exposition</h3>
+            <p>Découverte des sous-domaines, IP publiques, services web et signaux DNS.</p>
+          </article>
+          <article class="card">
+            <h3>Analyse de risque</h3>
+            <p>Score exécutif par piliers : DNS, messagerie, web, TLS/SSL, surface exposée, CTI et CVE passives.</p>
+          </article>
+          <article class="card">
+            <h3>Reporting</h3>
+            <p>Exports PDF, Excel et JSON pour faciliter la restitution technique et décisionnelle.</p>
+          </article>
+        </div>
+      </section>
 
-  <div class="cards">
-    <div class="card">
-      <h3>Cartographie d’exposition</h3>
-      <p>Inventaire des domaines, sous-domaines, services et ports exposés sur Internet.</p>
-    </div>
+      <section aria-labelledby="controls-title">
+        <h2 id="controls-title">Contrôles réalisés</h2>
+        <div class="features-grid">
+          <div class="feature">DNS public</div>
+          <div class="feature">SPF / DMARC / MX</div>
+          <div class="feature">TLS/SSL</div>
+          <div class="feature">Headers HTTP</div>
+          <div class="feature">Sous-domaines passifs</div>
+          <div class="feature">Inventaire IP</div>
+          <div class="feature">CTI légère / DNSBL</div>
+          <div class="feature">CVE passives</div>
+          <div class="feature">Score exécutif</div>
+          <div class="feature">Rapports PDF / Excel / JSON</div>
+        </div>
+      </section>
 
-    <div class="card">
-      <h3>Analyse de risque</h3>
-      <p>Score de risque, détection de mauvaises configurations et priorisation des actions.</p>
-    </div>
+      <section aria-labelledby="responsible-title">
+        <h2 id="responsible-title">Usage responsable</h2>
+        <p class="highlight">OpenEASM Alpha est conçu pour un usage défensif et autorisé. L’outil ne réalise pas de scan de ports agressif, pas d’exploitation, pas de bruteforce et pas de test destructif.</p>
+      </section>
 
-    <div class="card">
-      <h3>Reporting</h3>
-      <p>Génération de rapports techniques et exécutifs pour la DSI, RSSI ou direction.</p>
-    </div>
+      <section id="installation" aria-labelledby="install-title">
+        <h2 id="install-title">Installation rapide</h2>
+        <pre><code>git clone https://github.com/Swapshadow/open-easm.git
+cd open-easm
+docker-compose up -d --build
+
+http://localhost:8000</code></pre>
+      </section>
+
+      <section aria-labelledby="oss-title">
+        <h2 id="oss-title">Open source</h2>
+        <p class="open-source">Le projet est publié sur GitHub afin de permettre l’amélioration continue, les retours communautaires et l’évolution vers une solution EASM libre, simple et compréhensible.</p>
+        <a class="btn primary" href="https://github.com/Swapshadow/open-easm" target="_blank" rel="noopener noreferrer">Accéder au dépôt GitHub</a>
+      </section>
+    </main>
+
+    <footer>
+      <strong>OpenEASM Alpha</strong><br />
+      Projet open source EASM ·
+      <a href="https://github.com/Swapshadow/open-easm" target="_blank" rel="noopener noreferrer">Lien GitHub</a>
+    </footer>
   </div>
 
-  <h2>Installation rapide</h2>
-  <pre><code>git clone https://github.com/Swapshadow/open-easm.git
-cd open-easm
-docker compose up -d --build</code></pre>
+  <script>
+    (function () {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-  <h2>Objectif du projet</h2>
-  <p>
-    Fournir une solution simple, lisible et exploitable pour surveiller la surface d’attaque externe
-    d’une organisation et faciliter la mise en conformité cyber.
-  </p>
-</main>
+      var canvas = document.getElementById('matrix-bg');
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-<footer>
-  OpenEASM — Projet cyber open source par Swapshadow
-</footer>
+      var drops = [];
+      var fontSize = 16;
+      var columns = 0;
+      var binary = ['0', '1'];
 
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        columns = Math.floor(canvas.width / fontSize);
+        drops = Array(columns).fill(0).map(function () {
+          return Math.floor(Math.random() * -40);
+        });
+      }
+
+      function draw() {
+        ctx.fillStyle = 'rgba(248, 244, 236, 0.08)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = 'rgba(162, 25, 31, 0.42)';
+        ctx.font = fontSize + 'px monospace';
+
+        for (var i = 0; i < drops.length; i += 1) {
+          var text = binary[Math.floor(Math.random() * binary.length)];
+          var x = i * fontSize;
+          var y = drops[i] * fontSize;
+
+          ctx.fillText(text, x, y);
+
+          if (y > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i] += 1;
+        }
+
+        window.requestAnimationFrame(draw);
+      }
+
+      resize();
+      window.addEventListener('resize', resize);
+      window.requestAnimationFrame(draw);
+    })();
+  </script>
 </body>
 </html>
