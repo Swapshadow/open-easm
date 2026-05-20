@@ -1,6 +1,6 @@
 
 // -----------------------------------------------------------------------------
-// OpenEASM V6 visual layer: Matrix 0/1 + premium meteors
+// OpenEASM V7.5 visual layer: Matrix 0/1 + premium meteors
 // -----------------------------------------------------------------------------
 (function(){
   function initMatrixRain(){
@@ -26,7 +26,7 @@ const refreshHistoryBtn = document.getElementById("refreshHistoryBtn");
 const clearAllBtn = document.getElementById("clearAllBtn");
 const domainInput = document.getElementById("domain");
 const termsBox = document.getElementById("termsBox");
-const termsAcceptedInput = document.getElementById("termsAcceptedV6");
+const termsAcceptedInput = document.getElementById("termsAcceptedV7");
 const termsStatus = document.getElementById("termsStatus");
 const loading = document.getElementById("loading");
 const errorBox = document.getElementById("error");
@@ -76,12 +76,69 @@ const pillarScoresBox = document.getElementById("pillarScores");
 const topRisksBox = document.getElementById("topRisks");
 const menuLinks = document.querySelectorAll("[data-page-link]");
 const pages = document.querySelectorAll(".page");
+const legalGate = document.getElementById("legalGate");
+const legalText = document.getElementById("legalText");
+const legalArticles = document.getElementById("legalArticles");
+const legalAcceptCheckbox = document.getElementById("legalAcceptCheckbox");
+const legalAcceptBtn = document.getElementById("legalAcceptBtn");
+const legalGateStatus = document.getElementById("legalGateStatus");
+const scanProgressFill = document.getElementById("scanProgressFill");
+const scanProgressPercent = document.getElementById("scanProgressPercent");
+const scanProgressStep = document.getElementById("scanProgressStep");
+const scanElapsed = document.getElementById("scanElapsed");
+const scanRemaining = document.getElementById("scanRemaining");
+const serviceScanCount = document.getElementById("serviceScanCount");
+const serviceScanBox = document.getElementById("serviceScanBox");
+const reloadGraphBtn = document.getElementById("reloadGraphBtn");
+const fitGraphBtn = document.getElementById("fitGraphBtn");
+const graphStats = document.getElementById("graphStats");
+const graphSvg = document.getElementById("graphSvg");
+const graphStage = document.querySelector(".graph-stage");
+const graphDetails = document.getElementById("graphDetails");
 
 
 let termsAccepted = false;
+let legalTerms = null;
+let termsToken = localStorage.getItem("openeasm_terms_token") || "";
+let progressTimer = null;
+let progressStartedAt = 0;
+let currentAuditId = null;
+let currentGraph = null;
+
+const SCAN_STEPS = [
+  { at: 0, text: "Initialisation et garde-fous" },
+  { at: 8, text: "Validation juridique et domaine" },
+  { at: 18, text: "DNS, SPF, DMARC et MX" },
+  { at: 32, text: "HTTP, headers et TLS/SSL" },
+  { at: 48, text: "Sous-domaines et inventaire IP" },
+  { at: 62, text: "Nmap service/version/port non exploitant" },
+  { at: 80, text: "Corrélation CVE et scoring" },
+  { at: 92, text: "Génération des rapports" },
+];
 
 async function fetchJsonSafe(url, options = {}) {
-  const response = await fetch(url, options);
+  const timeoutMs = options.timeoutMs || 0;
+  const fetchOptions = { ...options };
+  delete fetchOptions.timeoutMs;
+  let timeoutId = null;
+  if (timeoutMs > 0) {
+    const controller = new AbortController();
+    fetchOptions.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  let response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error(`Délai dépassé pour ${url}. Vérifie les logs backend et l’état de PostgreSQL.`);
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
   const contentType = response.headers.get("content-type") || "";
   const text = await response.text();
 
@@ -115,6 +172,8 @@ resetBtn.addEventListener("click", resetAudit);
 if (refreshDiagnosticsBtn) refreshDiagnosticsBtn.addEventListener("click", loadDiagnostics);
 if (testExportsBtn) testExportsBtn.addEventListener("click", runExportTest);
 if (refreshReportsBtn) refreshReportsBtn.addEventListener("click", loadReportsCenter);
+if (reloadGraphBtn) reloadGraphBtn.addEventListener("click", loadLatestGraph);
+if (fitGraphBtn) fitGraphBtn.addEventListener("click", () => { if (currentGraph) { renderGraphExplorer(currentGraph); centerGraphStage(); } });
 menuLinks.forEach(btn => btn.addEventListener("click", () => showPage(btn.dataset.pageLink)));
 refreshHistoryBtn.addEventListener("click", loadServerData);
 clearAllBtn.addEventListener("click", clearAllAudits);
@@ -127,20 +186,35 @@ domainInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && termsAccepted) runAudit();
 });
 
-termsAcceptedInput.addEventListener("change", (e) => setTermsAccepted(e.target.checked));
-termsBox.addEventListener("click", (e) => {
-  if (e.target === termsAcceptedInput) return;
-  setTermsAccepted(!termsAccepted);
+termsAcceptedInput.addEventListener("change", () => {
+  termsAcceptedInput.checked = termsAccepted;
+  if (!termsAccepted) showLegalGate();
+});
+termsBox.addEventListener("click", () => {
+  if (!termsAccepted) showLegalGate();
 });
 termsBox.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
-    setTermsAccepted(!termsAccepted);
+    if (!termsAccepted) showLegalGate();
   }
 });
+if (legalAcceptCheckbox) {
+  legalAcceptCheckbox.addEventListener("change", () => {
+    legalAcceptBtn.disabled = !legalAcceptCheckbox.checked;
+  });
+}
+if (legalAcceptBtn) legalAcceptBtn.addEventListener("click", acceptLegalTerms);
+document.addEventListener("keydown", (e) => {
+  if (legalGate && !legalGate.classList.contains("hidden") && e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
 
 setTermsAccepted(false);
 initPageNavigation();
+initLegalGate();
 loadServerData();
 loadVerifiedDomains();
 loadDiagnostics();
@@ -162,21 +236,145 @@ function showPage(page, updateHash = true) {
   if (updateHash) history.replaceState(null, "", `#${page}`);
   if (page === "diagnostics") loadDiagnostics();
   if (page === "reports") loadReportsCenter();
+  if (page === "graph" && !currentGraph) loadLatestGraph();
 }
 
 function setTermsAccepted(value) {
   termsAccepted = Boolean(value);
-  termsAcceptedInput.checked = termsAccepted;
-  termsBox.setAttribute("aria-pressed", String(termsAccepted));
-  termsBox.classList.toggle("accepted", termsAccepted);
-  runBtn.disabled = !termsAccepted;
+  if (termsAcceptedInput) {
+    termsAcceptedInput.checked = termsAccepted;
+    termsAcceptedInput.disabled = true;
+  }
+  if (termsBox) {
+    termsBox.setAttribute("aria-pressed", String(termsAccepted));
+    termsBox.classList.toggle("accepted", termsAccepted);
+  }
+  if (runBtn) runBtn.disabled = !termsAccepted;
 
-  if (termsAccepted) {
-    termsStatus.textContent = "Usage responsable accepté : vous pouvez lancer l’audit.";
-    termsStatus.className = "terms-status ok";
-  } else {
-    termsStatus.textContent = "Usage responsable non accepté : le bouton d’audit est désactivé.";
-    termsStatus.className = "terms-status ko";
+  if (termsStatus) {
+    if (termsAccepted) {
+      termsStatus.textContent = "Avertissement juridique accepté : vous pouvez lancer l’audit V7.5.";
+      termsStatus.className = "terms-status ok";
+    } else {
+      termsStatus.textContent = "Avertissement juridique non accepté : le bouton d’audit est désactivé.";
+      termsStatus.className = "terms-status ko";
+    }
+  }
+}
+
+function showLegalGate() {
+  if (!legalGate) return;
+  legalGate.hidden = false;
+  legalGate.style.removeProperty("display");
+  legalGate.removeAttribute("aria-hidden");
+  legalGate.classList.remove("hidden");
+  document.body.classList.add("legal-locked");
+}
+
+function hideLegalGate(force = false) {
+  if (!legalGate) return;
+  legalGate.classList.add("hidden");
+  legalGate.setAttribute("aria-hidden", "true");
+  legalGate.hidden = true;
+  if (force) legalGate.style.display = "none";
+  document.body.classList.remove("legal-locked");
+}
+
+function completeLegalAcceptance() {
+  setTermsAccepted(true);
+  hideLegalGate(true);
+  if (legalAcceptCheckbox) legalAcceptCheckbox.checked = true;
+  if (legalAcceptBtn) legalAcceptBtn.disabled = true;
+  showPage("audit", false);
+  if (location.hash !== "#audit") history.replaceState(null, "", "#audit");
+  requestAnimationFrame(() => {
+    hideLegalGate(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+async function initLegalGate() {
+  showLegalGate();
+  try {
+    legalTerms = await fetchJsonSafe("/api/legal/terms");
+    renderLegalTerms(legalTerms);
+
+    if (termsToken) {
+      const status = await fetchJsonSafe(`/api/legal/status?token=${encodeURIComponent(termsToken)}`);
+      if (status.valid || status.accepted) {
+        completeLegalAcceptance();
+        return;
+      }
+      termsToken = "";
+      localStorage.removeItem("openeasm_terms_token");
+    }
+
+    setTermsAccepted(false);
+    showLegalGate();
+  } catch (err) {
+    setTermsAccepted(false);
+    showLegalGate();
+    if (legalGateStatus) {
+      legalGateStatus.textContent = `Impossible de charger l’avertissement juridique : ${err.message}`;
+      legalGateStatus.className = "terms-status ko";
+    }
+  }
+}
+
+function renderLegalTerms(payload) {
+  if (!payload) return;
+  if (legalText) {
+    legalText.textContent = payload.text || "Conditions indisponibles.";
+  }
+  if (legalArticles) {
+    legalArticles.innerHTML = "";
+    for (const article of payload.articles || []) {
+      const div = document.createElement("div");
+      div.className = "legal-article";
+      div.innerHTML = `
+        <strong>${escapeHtml(article.article || "Article")}</strong>
+        <span>${escapeHtml(article.summary || "")}</span>
+        <em>${escapeHtml(article.penalty || "")}</em>
+      `;
+      legalArticles.appendChild(div);
+    }
+  }
+  if (legalGateStatus) {
+    legalGateStatus.textContent = `Version du règlement : ${payload.version || "N/A"}`;
+    legalGateStatus.className = "terms-status ko";
+  }
+}
+
+async function acceptLegalTerms() {
+  if (!legalTerms) {
+    if (legalGateStatus) legalGateStatus.textContent = "Conditions non chargées.";
+    return;
+  }
+  if (!legalAcceptCheckbox.checked) return;
+  legalAcceptBtn.disabled = true;
+  legalGateStatus.textContent = "Enregistrement de l’acceptation...";
+  try {
+    const data = await fetchJsonSafe("/api/legal/accept-terms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-OpenEASM-Version": "v7.5" },
+      body: JSON.stringify({ accepted: true, terms_hash: legalTerms.hash, terms_version: legalTerms.version }),
+      timeoutMs: 15000,
+    });
+    const token = data.token || data.terms_token || data.acceptance_token;
+    if (!token) throw new Error("Acceptation enregistrée, mais jeton backend absent. Recharge la page et vérifie /api/legal/accept-terms.");
+    termsToken = token;
+    localStorage.setItem("openeasm_terms_token", token);
+    localStorage.setItem("openeasm_terms_version", data.terms_version || data.version || legalTerms.version || "");
+    localStorage.setItem("openeasm_terms_hash", data.terms_hash || data.hash || legalTerms.hash || "");
+    if (legalGateStatus) {
+      legalGateStatus.textContent = "Acceptation enregistrée côté backend. Redirection vers OpenEASM...";
+      legalGateStatus.className = "terms-status ok";
+    }
+    completeLegalAcceptance();
+  } catch (err) {
+    legalAcceptBtn.disabled = false;
+    legalGateStatus.textContent = err.message || "Acceptation impossible.";
+    legalGateStatus.className = "terms-status ko";
   }
 }
 
@@ -186,32 +384,36 @@ async function runAudit() {
   errorBox.classList.add("hidden");
   results.classList.add("hidden");
 
-  if (!termsAccepted) {
-    errorBox.textContent = "Vous devez accepter l'usage responsable avant de lancer l'audit.";
+  if (!termsAccepted || !termsToken) {
+    errorBox.textContent = "Vous devez accepter l’avertissement juridique obligatoire avant de lancer l’audit.";
     errorBox.classList.remove("hidden");
+    showLegalGate();
     return;
   }
 
   loading.classList.remove("hidden");
   runBtn.disabled = true;
   runBtn.textContent = "Audit en cours...";
+  startAuditProgress();
 
   try {
     const data = await fetchJsonSafe("/api/audit", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-OpenEASM-Version": "alpha"
+        "X-OpenEASM-Version": "v7.5"
       },
-      body: JSON.stringify({ domain, accepted_terms: true }),
+      body: JSON.stringify({ domain, accepted_terms: true, terms_token: termsToken }),
     });
 
+    stopAuditProgress(true);
     renderResults(data);
     await loadComparison(data.domain);
     await loadServerData();
     await loadVerifiedDomains();
     await loadReportsCenter();
   } catch (err) {
+    stopAuditProgress(false);
     errorBox.textContent = err.message || "Erreur inconnue pendant l'audit.";
     errorBox.classList.remove("hidden");
   } finally {
@@ -219,6 +421,47 @@ async function runAudit() {
     runBtn.disabled = !termsAccepted;
     runBtn.textContent = "Lancer l'audit";
   }
+}
+
+function startAuditProgress() {
+  progressStartedAt = Date.now();
+  updateAuditProgress(0);
+  clearInterval(progressTimer);
+  progressTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - progressStartedAt) / 1000);
+    const estimatedTotal = 105;
+    const percent = Math.min(94, Math.round((elapsed / estimatedTotal) * 100));
+    updateAuditProgress(percent);
+  }, 1000);
+}
+
+function updateAuditProgress(percent) {
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  const elapsed = progressStartedAt ? Math.floor((Date.now() - progressStartedAt) / 1000) : 0;
+  const estimatedTotal = 105;
+  const remaining = Math.max(0, estimatedTotal - elapsed);
+  const step = [...SCAN_STEPS].reverse().find(s => safePercent >= s.at) || SCAN_STEPS[0];
+
+  if (scanProgressFill) scanProgressFill.style.width = `${safePercent}%`;
+  if (scanProgressPercent) scanProgressPercent.textContent = `${safePercent}%`;
+  if (scanProgressStep) scanProgressStep.textContent = step.text;
+  if (scanElapsed) scanElapsed.textContent = formatDuration(elapsed);
+  if (scanRemaining) scanRemaining.textContent = safePercent >= 100 ? "terminé" : formatDuration(remaining);
+}
+
+function stopAuditProgress(success) {
+  clearInterval(progressTimer);
+  progressTimer = null;
+  updateAuditProgress(success ? 100 : 0);
+  if (!success && scanProgressStep) scanProgressStep.textContent = "Audit interrompu";
+}
+
+function formatDuration(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}min ${r.toString().padStart(2, "0")}s`;
 }
 
 async function loadServerData() {
@@ -571,6 +814,9 @@ function pillarClass(score) {
 
 
 function renderResults(data) {
+  currentAuditId = data.id || null;
+  currentGraph = data.attack_graph || null;
+  if (currentGraph) renderGraphExplorer(currentGraph);
   scoreBox.textContent = `${data.score.score} / ${data.score.max_score}`;
   levelBox.textContent = data.score.level;
   profileBox.textContent = data.domain_profile.label;
@@ -594,6 +840,9 @@ function renderResults(data) {
     `IP prestataires tiers : ${data.summary.third_party_provider_ip_count || 0}`,
     `Score TLS/SSL : ${data.summary.tls_score ?? "N/A"} / 100 (${data.summary.tls_level || "N/A"})`,
     `CVE potentielles passives : ${data.summary.passive_cve_count || 0}`,
+    `Ports ouverts détectés par Nmap : ${data.summary.service_open_port_count || 0}`,
+    `CVE service/version détectées : ${data.summary.service_cve_count || 0}`,
+    `Durée scan service/version : ${data.summary.service_scan_elapsed_seconds ?? "N/A"} s`,
   ];
 
   for (const item of items) {
@@ -607,6 +856,7 @@ function renderResults(data) {
   renderIpInventory(data.ip_inventory || {});
   renderTlsAdvanced(data.tls_score || {});
   renderPassiveCves(data.passive_cves || {});
+  renderServiceScan(data.service_scan || {});
   renderCti(data.cti || {});
   renderPatching(data.patching_sla || {});
   renderSubdomains(data.subdomains || {});
@@ -741,6 +991,68 @@ function renderPassiveCves(cves) {
   }
 }
 
+function renderServiceScan(scan) {
+  if (!serviceScanBox || !serviceScanCount) return;
+  const openPorts = scan.open_ports || [];
+  const cves = scan.cves || [];
+  serviceScanCount.textContent = `${scan.count_open_ports || openPorts.length || 0} port(s) | ${scan.count_cves || cves.length || 0} CVE`;
+  serviceScanBox.innerHTML = "";
+
+  const summary = document.createElement("div");
+  summary.className = "target";
+  summary.innerHTML = `
+    <strong>Mode : ${escapeHtml(scan.mode || "service_version_light")}</strong>
+    <span>${escapeHtml(scan.note || "Scan Nmap limité à la détection service/version/port, sans exploitation.")}</span>
+    <span>Durée : ${escapeHtml(scan.elapsed_seconds ?? "N/A")} seconde(s)</span>
+  `;
+  serviceScanBox.appendChild(summary);
+
+  if (!scan.enabled) {
+    const disabled = document.createElement("div");
+    disabled.className = "target";
+    disabled.innerHTML = `<strong>Scan non exécuté</strong><span>${escapeHtml(scan.note || scan.error || "Nmap indisponible ou cible bloquée par les garde-fous.")}</span>`;
+    serviceScanBox.appendChild(disabled);
+    return;
+  }
+
+  const targets = scan.targets || [];
+  if (targets.length) {
+    for (const target of targets.slice(0, 8)) {
+      const status = target.status || "unknown";
+      const count = (target.open_ports || []).length;
+      const div = document.createElement("div");
+      div.className = "target";
+      div.innerHTML = `
+        <strong>Cible : ${escapeHtml(target.hostname || "N/A")} — ${escapeHtml(status)}</strong>
+        <span>Ports ouverts détectés : ${escapeHtml(count)} | Durée : ${escapeHtml(target.elapsed_seconds ?? "N/A")} s</span>
+        <span>Commande : nmap ${escapeHtml(target.command || scan.command_policy || "-sS -sV --version-all --reason")}</span>
+        ${target.error ? `<span>Information : ${escapeHtml(target.error)}</span>` : ""}
+      `;
+      serviceScanBox.appendChild(div);
+    }
+  }
+
+  if (openPorts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "target";
+    empty.innerHTML = "<strong>Aucun port ouvert détecté</strong><span>Vérifier le détail des cibles ci-dessus. En V7.2, le scan utilise -sS avec capability NET_RAW pour se rapprocher d’un nmap classique root, puis fallback -sT si nécessaire.</span>";
+    serviceScanBox.appendChild(empty);
+  }
+
+  for (const port of openPorts.slice(0, 30)) {
+    const related = cves.filter(c => String(c.host || c.hostname || "") === String(port.host || port.hostname || "") && Number(c.port) === Number(port.port));
+    const div = document.createElement("div");
+    div.className = "target";
+    div.innerHTML = `
+      <strong>${escapeHtml(port.host || port.hostname || "cible")} — ${escapeHtml(port.port)}/${escapeHtml(port.protocol || "tcp")}</strong>
+      <span>Service : ${escapeHtml(port.service || "unknown")} | Produit : ${escapeHtml(port.product || "N/A")} | Version : ${escapeHtml(port.version || "N/A")}</span>
+      <span>CPE : ${(port.cpes || []).map(escapeHtml).join(", ") || "Non détecté"}</span>
+      <span>CVE corrélées : ${related.length ? related.map(c => `${c.cve} (${c.severity})`).join(" ; ") : "Aucune correspondance locale"}</span>
+    `;
+    serviceScanBox.appendChild(div);
+  }
+}
+
 function renderCti(cti) {
   ctiBox.innerHTML = "";
 
@@ -832,7 +1144,7 @@ function renderSubdomains(sub) {
 function renderFindings(findings) {
   findingsBox.innerHTML = "";
   if (!findings || findings.length === 0) {
-    findingsBox.innerHTML = "<p>Aucun constat notable sur les contrôles V6.</p>";
+    findingsBox.innerHTML = "<p>Aucun constat notable sur les contrôles V7.</p>";
     return;
   }
 
@@ -854,6 +1166,229 @@ function renderFindings(findings) {
     `;
     findingsBox.appendChild(div);
   }
+}
+
+
+async function loadLatestGraph() {
+  if (!graphSvg || !graphStats) return;
+  graphStats.innerHTML = "<span>Chargement du dernier graphe...</span>";
+  try {
+    const data = await fetchJsonSafe("/api/graph/latest");
+    if (!data.available) {
+      graphStats.innerHTML = "<span>Aucun audit disponible pour le Graph Explorer.</span>";
+      graphSvg.innerHTML = "";
+      graphDetails.innerHTML = "<strong>Sélection</strong><p>Lance un audit pour générer la cartographie relationnelle.</p>";
+      return;
+    }
+    currentAuditId = data.audit_id || currentAuditId;
+    currentGraph = data.graph || null;
+    renderGraphExplorer(currentGraph);
+  } catch (err) {
+    graphStats.innerHTML = `<span>Graph indisponible : ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function renderGraphExplorer(graph) {
+  if (!graphSvg || !graphStats || !graphDetails) return;
+  if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges) || !graph.nodes.length) {
+    graphSvg.innerHTML = "";
+    graphStats.innerHTML = "<span>Aucune donnée de graphe disponible.</span>";
+    graphDetails.innerHTML = "<strong>Sélection</strong><p>Lance un audit pour générer la cartographie.</p>";
+    return;
+  }
+
+  const nodes = graph.nodes.slice(0, 220).map(n => ({ ...n }));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const edges = graph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target)).slice(0, 440);
+  const layout = computeGraphPositions(nodes, edges);
+  const positions = layout.positions;
+  const width = layout.width;
+  const height = layout.height;
+
+  graphStats.innerHTML = `
+    <span><strong>${escapeHtml(graph.domain || "domaine")}</strong></span>
+    <span>${escapeHtml(graph.metrics?.nodes ?? nodes.length)} nœuds</span>
+    <span>${escapeHtml(graph.metrics?.edges ?? edges.length)} liens</span>
+    <span>${escapeHtml(graph.metrics?.public_ips ?? 0)} IP publiques</span>
+    <span>${escapeHtml(graph.metrics?.open_ports ?? 0)} ports Nmap</span>
+    <span>${escapeHtml(graph.metrics?.service_cves ?? 0)} CVE service/version</span>
+    <span>Vue V7.5 grand format</span>
+  `;
+
+  graphSvg.innerHTML = "";
+  graphSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  graphSvg.setAttribute("width", String(width));
+  graphSvg.setAttribute("height", String(height));
+  graphSvg.style.width = `${width}px`;
+  graphSvg.style.height = `${height}px`;
+
+  const ns = "http://www.w3.org/2000/svg";
+  const defs = document.createElementNS(ns, "defs");
+  defs.innerHTML = `
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="rgba(255,255,255,.44)"></path>
+    </marker>
+    <filter id="nodeGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  graphSvg.appendChild(defs);
+
+  const edgeLayer = document.createElementNS(ns, "g");
+  edgeLayer.setAttribute("class", "graph-edges");
+  graphSvg.appendChild(edgeLayer);
+
+  const nodeLayer = document.createElementNS(ns, "g");
+  nodeLayer.setAttribute("class", "graph-nodes");
+  graphSvg.appendChild(nodeLayer);
+
+  for (const edge of edges) {
+    const a = positions.get(edge.source);
+    const b = positions.get(edge.target);
+    if (!a || !b) continue;
+    const path = document.createElementNS(ns, "path");
+    const midX = (a.x + b.x) / 2;
+    const d = `M ${a.x} ${a.y} C ${midX} ${a.y}, ${midX} ${b.y}, ${b.x} ${b.y}`;
+    path.setAttribute("d", d);
+    path.setAttribute("class", `graph-edge ${edge.type || "related"}`);
+    path.setAttribute("marker-end", "url(#arrowHead)");
+    path.setAttribute("data-label", edge.label || "");
+    edgeLayer.appendChild(path);
+  }
+
+  for (const node of nodes) {
+    const p = positions.get(node.id);
+    if (!p) continue;
+    const group = document.createElementNS(ns, "g");
+    group.setAttribute("class", `graph-node ${node.type || "unknown"}`);
+    group.setAttribute("transform", `translate(${p.x}, ${p.y})`);
+    group.setAttribute("tabindex", "0");
+
+    const circle = document.createElementNS(ns, "circle");
+    const radius = Math.max(8, Math.min(20, 8 + Number(node.weight || 1) * 1.4));
+    circle.setAttribute("r", String(radius));
+    circle.setAttribute("filter", "url(#nodeGlow)");
+    group.appendChild(circle);
+
+    const text = document.createElementNS(ns, "text");
+    text.setAttribute("x", String(radius + 8));
+    text.setAttribute("y", "4");
+    text.textContent = shortenText(node.label || node.id, node.type === "finding" ? 48 : 34);
+    group.appendChild(text);
+
+    group.addEventListener("click", () => {
+      graphSvg.querySelectorAll(".graph-node.selected").forEach(el => el.classList.remove("selected"));
+      group.classList.add("selected");
+      showGraphNodeDetails(node, graph, edges);
+    });
+    group.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        group.dispatchEvent(new Event("click"));
+      }
+    });
+    nodeLayer.appendChild(group);
+  }
+
+  graphDetails.innerHTML = `<strong>Graph Explorer V7.5</strong><p>${escapeHtml(graph.domain || "Domaine")} : cartographie grand format par colonnes. Clique sur un nœud pour afficher ses relations et propriétés. La zone du graphe a été élargie pour visualiser davantage de relations sans perdre la lisibilité.</p>`;
+  centerGraphStage();
+}
+
+function computeGraphPositions(nodes, edges) {
+  const root = nodes.find(n => n.type === "domain" && String(n.id || "").startsWith("domain:")) || nodes[0];
+  const levels = new Map();
+  const levelOf = (node) => {
+    if (root && node.id === root.id) return 0;
+    const type = node.type || "unknown";
+    if (type === "profile") return 1;
+    if (type === "domain" || type === "subdomain") return 1;
+    if (type === "web" || type === "ip") return 2;
+    if (type === "service") return 3;
+    if (type === "cve" || type === "finding") return 4;
+    return 5;
+  };
+
+  for (const node of nodes) {
+    const level = levelOf(node);
+    if (!levels.has(level)) levels.set(level, []);
+    levels.get(level).push(node);
+  }
+
+  for (const [level, list] of levels.entries()) {
+    list.sort((a, b) => String(a.label || a.id).localeCompare(String(b.label || b.id), "fr", { numeric: true }));
+    if (level === 0 && root) {
+      const idx = list.findIndex(n => n.id === root.id);
+      if (idx > 0) list.unshift(list.splice(idx, 1)[0]);
+    }
+  }
+
+  const maxColumn = Math.max(...[...levels.values()].map(v => v.length), 1);
+  const width = 1540;
+  const height = Math.max(900, Math.min(3600, 150 + maxColumn * 50));
+  const columns = [95, 390, 700, 1000, 1285, 1460];
+  const positions = new Map();
+
+  for (const [level, list] of levels.entries()) {
+    const xBase = columns[level] ?? (90 + level * 230);
+    const span = height - 140;
+    const gap = span / Math.max(1, list.length + 1);
+    list.forEach((node, idx) => {
+      let x = xBase;
+      let y = 70 + gap * (idx + 1);
+      if (level === 0) y = height / 2;
+      const typeShift = { ip: 28, web: -28, finding: 18, cve: -18, profile: -44 }[node.type] || 0;
+      const wave = ((idx % 3) - 1) * 10;
+      positions.set(node.id, {
+        x: Math.max(40, Math.min(width - 80, x + typeShift + wave)),
+        y: Math.max(40, Math.min(height - 40, y)),
+      });
+    });
+  }
+
+  // Pull directly connected orphan nodes closer to their source column, without collapsing everything in one corner.
+  for (const edge of edges) {
+    const a = positions.get(edge.source);
+    const b = positions.get(edge.target);
+    if (!a || !b) continue;
+    if (Math.abs(a.y - b.y) > 620) {
+      b.y = Math.max(50, Math.min(height - 50, a.y + (b.y > a.y ? 260 : -260)));
+    }
+  }
+
+  return { positions, width, height };
+}
+
+function centerGraphStage() {
+  if (!graphStage || !graphSvg) return;
+  const domainNode = graphSvg.querySelector(".graph-node.domain");
+  if (!domainNode) {
+    graphStage.scrollLeft = 0;
+    graphStage.scrollTop = 0;
+    return;
+  }
+  const match = /translate\(([-0-9.]+),\s*([-0-9.]+)\)/.exec(domainNode.getAttribute("transform") || "");
+  if (!match) return;
+  const x = Number(match[1]) || 0;
+  const y = Number(match[2]) || 0;
+  graphStage.scrollLeft = Math.max(0, x - graphStage.clientWidth * 0.25);
+  graphStage.scrollTop = Math.max(0, y - graphStage.clientHeight * 0.5);
+}
+
+function showGraphNodeDetails(node, graph, edges) {
+  if (!graphDetails) return;
+  const related = edges.filter(e => e.source === node.id || e.target === node.id).slice(0, 18);
+  const props = node.properties || {};
+  const propHtml = Object.entries(props).slice(0, 12).map(([k, v]) => `<li><strong>${escapeHtml(k)}</strong> : ${escapeHtml(Array.isArray(v) ? v.join(", ") : v)}</li>`).join("");
+  const relHtml = related.map(e => `<li>${escapeHtml(e.source === node.id ? "→" : "←")} ${escapeHtml(e.label || e.type)} ${escapeHtml(e.source === node.id ? e.target : e.source)}</li>`).join("");
+  graphDetails.innerHTML = `
+    <strong>${escapeHtml(node.label || node.id)}</strong>
+    <p><span class="node-type ${escapeHtml(node.type || "unknown")}">${escapeHtml(node.type || "unknown")}</span></p>
+    <h4>Propriétés</h4>
+    <ul>${propHtml || "<li>Aucune propriété détaillée.</li>"}</ul>
+    <h4>Relations</h4>
+    <ul>${relHtml || "<li>Aucune relation affichée.</li>"}</ul>
+  `;
 }
 
 function resetAudit() {

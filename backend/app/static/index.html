@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OpenEASM Alpha</title>
+  <title>OpenEASM V7.5</title>
   <link rel="icon" href="/assets/favicon.png" />
-  <link rel="stylesheet" href="/styles.css?v=alpha" />
+  <link rel="stylesheet" href="/styles.css?v=v75-graph-logo" />
 </head>
 <body>
   <canvas id="matrixCanvas" aria-hidden="true"></canvas>
@@ -13,24 +13,46 @@
   <div class="premium-vignette" aria-hidden="true"></div>
   <div class="grain-layer" aria-hidden="true"></div>
 
+
+  <section id="legalGate" class="legal-gate" aria-modal="true" role="dialog" aria-labelledby="legalGateTitle">
+    <div class="legal-dialog">
+      <div class="legal-header">
+        <p class="eyebrow">Accès obligatoire</p>
+        <h2 id="legalGateTitle">Avertissement juridique OpenEASM V7.5</h2>
+        <p class="notice">Cette fenêtre ne peut pas être ignorée. L’accès à l’application et aux audits est bloqué tant que les conditions ne sont pas acceptées.</p>
+      </div>
+      <div id="legalText" class="legal-text">Chargement des conditions d’utilisation...</div>
+      <div id="legalArticles" class="legal-articles"></div>
+      <label class="legal-accept">
+        <input id="legalAcceptCheckbox" type="checkbox" />
+        <span>Je certifie avoir lu et accepté les conditions d’utilisation d’OpenEASM et reconnais être responsable de l’usage que j’en fais.</span>
+      </label>
+      <div class="legal-actions">
+        <button id="legalAcceptBtn" disabled type="button">J’accepte et j’accède à OpenEASM</button>
+      </div>
+      <p id="legalGateStatus" class="terms-status ko">Acceptation obligatoire.</p>
+    </div>
+  </section>
+
   <main class="container">
     <section class="hero">
       <div class="brand">
         <img class="app-logo" src="/assets/logo-wide.png" alt="Logo OpenEASM" />
         <div>
           <p class="eyebrow">Public EASM Risk Platform</p>
-          <h1>OpenEASM Alpha</h1>
+          <h1>OpenEASM V7.5</h1>
           <p class="subtitle">
-            Audit public non intrusif, scoring par piliers, rapports PDF/Excel/JSON et constats localisés.
+            Audit public défensif, scoring par piliers, rapports PDF/Excel/JSON, détection service/version/port, corrélation CVE non exploitante et Graph Explorer relationnel grand format.
           </p>
         </div>
       </div>
-      <div class="badge">Alpha publique</div>
+      <div class="badge">V7.5 cyborg defensive</div>
     </section>
 
     <nav class="app-menu" aria-label="Navigation OpenEASM">
       <button class="menu-link active" type="button" data-page-link="audit">Audit & Risque</button>
       <button class="menu-link" type="button" data-page-link="diagnostics">Diagnostic système</button>
+      <button class="menu-link" type="button" data-page-link="graph">Graph Explorer</button>
       <button class="menu-link" type="button" data-page-link="reports">Reporting Center</button>
     </nav>
 
@@ -46,15 +68,15 @@
         </div>
 
         <div id="termsBox" class="terms-box" role="button" tabindex="0" aria-pressed="false">
-          <input id="termsAcceptedV6" type="checkbox" />
+          <input id="termsAcceptedV7" type="checkbox" />
           <div>
-            <strong>Usage responsable</strong>
-            <p>Je confirme utiliser cet outil dans un cadre autorisé. OpenEASM réalise uniquement des contrôles publics non intrusifs.</p>
+            <strong>Verrou juridique validé</strong>
+            <p>Cette coche reflète l’acceptation obligatoire enregistrée côté backend. Elle n’est pas modifiable ici : en cas de nouvelle version du règlement, la fenêtre juridique sera réaffichée.</p>
           </div>
         </div>
 
-        <p id="termsStatus" class="terms-status ko">Usage responsable non accepté : le bouton d’audit est désactivé.</p>
-        <p class="notice">Aucun scan de ports, aucune exploitation, aucun bruteforce. Les contrôles HTTP/TLS sont bloqués si la cible résout vers une IP non publique.</p>
+        <p id="termsStatus" class="terms-status ko">Avertissement juridique non accepté : le bouton d’audit est désactivé.</p>
+        <p class="notice">Scan service/version Nmap limité : ports les plus courants, détection de version et corrélation CVE. Aucune exploitation, aucun bruteforce, aucun DoS. Les contrôles sont bloqués si la cible résout vers une IP non publique.</p>
       </section>
 
       <section class="card verify-card">
@@ -75,7 +97,12 @@
 
       <section id="loading" class="card hidden">
         <h2>Audit en cours...</h2>
-        <p>Analyse DNS, messagerie, HTTPS/TLS, inventaire IP, CTI léger, CVE passives et sous-domaines publics.</p>
+        <p>Analyse DNS, messagerie, HTTPS/TLS, inventaire IP, CTI léger, sous-domaines publics, Nmap service/version et corrélation CVE non exploitante.</p>
+        <div class="scan-progress" aria-live="polite">
+          <div class="progress-top"><strong id="scanProgressStep">Initialisation</strong><span id="scanProgressPercent">0%</span></div>
+          <div class="progress-track"><span id="scanProgressFill"></span></div>
+          <div class="progress-meta"><span>Temps écoulé : <strong id="scanElapsed">0s</strong></span><span>Temps restant estimé : <strong id="scanRemaining">calcul...</strong></span></div>
+        </div>
       </section>
 
       <section id="error" class="card error hidden"></section>
@@ -160,7 +187,13 @@
         </section>
 
         <section class="card">
-          <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi Alpha</span></div>
+          <div class="section-header"><h2>Nmap service/version/port</h2><span id="serviceScanCount" class="pill">0 port | 0 CVE</span></div>
+          <p class="notice">Détection non exploitante : Nmap est limité à l’identification des ports ouverts, services, versions et corrélation CVE côté OpenEASM.</p>
+          <div id="serviceScanBox" class="target-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-header"><h2>SLA patching</h2><span class="pill">Suivi V7</span></div>
           <div id="patchingBox" class="target-list"></div>
         </section>
       </section>
@@ -191,9 +224,42 @@
             <button id="testExportsBtn" class="secondary small" type="button">Tester les exports</button>
           </div>
         </div>
-        <p class="notice">Vérifie l’état de l’API, PostgreSQL, DNS, dossier reports, PDF, Excel, JSON et sources passives.</p>
+        <p class="notice">Vérifie l’état de l’API, PostgreSQL, DNS, Nmap, dossier reports, PDF, Excel, JSON et sources passives.</p>
         <div id="diagnosticsGrid" class="diagnostics-grid"></div>
         <div id="exportTestResult" class="target hidden"></div>
+      </section>
+    </section>
+
+    <section id="page-graph" class="page">
+      <section class="card graph-card">
+        <div class="section-header">
+          <div>
+            <h2>Graph Explorer</h2>
+            <p class="notice">Cartographie relationnelle défensive grand format : domaine, sous-domaines, IP publiques, services exposés, CVE corrélées et constats. Aucun test supplémentaire n’est lancé depuis cet onglet.</p>
+          </div>
+          <div class="actions compact-actions">
+            <button id="reloadGraphBtn" class="secondary small" type="button">Charger le dernier audit</button>
+            <button id="fitGraphBtn" class="secondary small" type="button">Recentrer</button>
+          </div>
+        </div>
+        <div id="graphStats" class="graph-stats"></div>
+        <div class="graph-layout">
+          <div class="graph-stage">
+            <svg id="graphSvg" viewBox="0 0 1540 900" role="img" aria-label="Graph Explorer OpenEASM"></svg>
+          </div>
+          <aside id="graphDetails" class="graph-details">
+            <strong>Sélection</strong>
+            <p>Clique sur un nœud pour afficher ses détails.</p>
+          </aside>
+        </div>
+        <div class="graph-legend">
+          <span class="legend-dot domain"></span>Domaine
+          <span class="legend-dot subdomain"></span>Sous-domaine
+          <span class="legend-dot ip"></span>IP
+          <span class="legend-dot service"></span>Service
+          <span class="legend-dot cve"></span>CVE
+          <span class="legend-dot finding"></span>Constat
+        </div>
       </section>
     </section>
 
@@ -209,6 +275,6 @@
     </section>
   </main>
 
-  <script src="/app.js?v=alpha"></script>
+  <script src="/app.js?v=v75-graph-logo"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ def collect_findings(*sections: dict) -> list[dict]:
     return findings
 
 def compute_score(findings: list[dict], profile: dict | None = None) -> dict:
-    # Fallback technical score. OpenEASM Alpha uses executive_risk.global_score as source of truth.
+    # Fallback technical score. OpenEASM V7 uses executive_risk.global_score as source of truth.
     penalty = 0
     by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     by_category = {}

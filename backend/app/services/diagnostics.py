@@ -5,6 +5,8 @@ import json
 import os
 import socket
 import time
+import shutil
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -123,6 +125,17 @@ def test_export_dependencies(cleanup: bool = True) -> dict:
         "cleanup": cleanup,
     }
 
+def check_nmap() -> dict:
+    path = shutil.which("nmap")
+    if not path:
+        return _item("Nmap service/version", "warning", "Nmap est absent : la détection ports/services/versions/CVE V7 sera désactivée.")
+    try:
+        proc = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=5, check=False)
+        first = (proc.stdout or proc.stderr or "nmap disponible").splitlines()[0]
+        return _item("Nmap service/version", "ok", first, {"path": path})
+    except Exception as exc:
+        return _item("Nmap service/version", "warning", "Nmap est présent mais le test version a échoué.", {"path": path, "error": str(exc)})
+
 def build_system_diagnostics(db: Session) -> dict:
     items = [
         _item("API FastAPI", "ok", "API OpenEASM opérationnelle."),
@@ -130,13 +143,14 @@ def build_system_diagnostics(db: Session) -> dict:
         check_reports_dir(),
         check_dns(),
         check_outbound_https(),
+        check_nmap(),
     ]
 
     export_test = test_export_dependencies(cleanup=True)
     items.extend(export_test["items"])
 
     return {
-        "version": "alpha",
+        "version": "v7",
         "app": "OpenEASM",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "overall": _overall(items),

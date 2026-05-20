@@ -317,6 +317,6 @@ def build_executive_risk(
             "by_category": by_category,
             "profile_adjusted": True,
             "profile": profile_name,
-            "source": "executive_risk_engine_alpha",
+            "source": "executive_risk_engine_v7",
         },
     }

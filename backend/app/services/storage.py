@@ -20,7 +20,7 @@ def save_audit(db: Session, audit: dict) -> None:
     summary = {
         "public_ip_count": audit.get("ip_inventory", {}).get("public_ip_count", 0),
         "subdomain_count": audit.get("subdomains", {}).get("count", 0),
-        "passive_cve_count": audit.get("passive_cves", {}).get("count", 0),
+        "passive_cve_count": (audit.get("passive_cves", {}).get("count", 0) or 0) + (audit.get("service_scan", {}).get("count_cves", 0) or 0),
         "tls_score": audit.get("tls_score", {}).get("global_score", 0),
     }
 

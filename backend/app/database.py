@@ -88,3 +88,14 @@ class VerifiedDomain(Base):
     verified_at = Column(DateTime(timezone=True), nullable=True)
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
     last_error = Column(Text, nullable=True)
+
+
+class LegalAcceptance(Base):
+    __tablename__ = "legal_acceptances"
+
+    token = Column(String(64), primary_key=True, index=True)
+    terms_version = Column(String(80), index=True, nullable=False)
+    terms_hash = Column(String(128), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), index=True, nullable=False)
+    client_ip = Column(String(128), nullable=True)
+    user_agent = Column(Text, nullable=True)

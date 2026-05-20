@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from uuid import uuid4
+import asyncio
 import traceback
 from pathlib import Path
 
@@ -32,11 +33,14 @@ from app.services.storage import save_audit, list_audits, get_audit_record, dash
 from app.services.domain_verification import start_verification, check_verification, get_domain_status, list_verified_domains, delete_verification, serialize_verification
 from app.services.diagnostics import build_system_diagnostics, test_export_dependencies
 from app.services.executive_risk import build_executive_risk
+from app.services.nmap_audit import audit_service_versions
+from app.services.legal_terms import legal_payload, create_acceptance, validate_acceptance
+from app.services.attack_graph import build_attack_graph
 
 app = FastAPI(
-    title="OpenEASM Alpha",
-    description="OpenEASM Alpha : outil EASM public non intrusif avec scoring exécutif, rapports et constats localisés.",
-    version="alpha",
+    title="OpenEASM V7.5",
+    description="OpenEASM V7.5 : EASM défensif avec avertissement juridique bloquant, scoring exécutif, rapports et détection service/version/CVE non exploitante.",
+    version="v7.5",
 )
 
 
@@ -63,14 +67,43 @@ REPORT_DIR = Path("/app/reports")
 
 class AuditRequest(BaseModel):
     domain: str = Field(..., description="Nom de domaine à auditer, exemple : example.com")
-    accepted_terms: bool = Field(False, description="L'utilisateur confirme être autorisé ou rester dans le cadre non intrusif.")
+    accepted_terms: bool = Field(False, description="L'utilisateur confirme être autorisé ou rester dans le cadre défensif autorisé.")
+    terms_token: str | None = Field(None, description="Jeton d'acceptation juridique V7 délivré par /api/legal/accept-terms.")
+
+class LegalAcceptRequest(BaseModel):
+    accepted: bool = Field(False, description="Confirme que l'utilisateur a lu et accepté les conditions.")
+    terms_hash: str | None = Field(None, description="Hash SHA-256 du texte juridique affiché.")
+    terms_version: str | None = Field(None, description="Version du règlement affiché.")
 
 class DomainVerificationRequest(BaseModel):
     domain: str = Field(..., description="Nom de domaine à vérifier, exemple : example.com")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "openeasm-alpha"}
+    return {"status": "ok", "service": "openeasm-v7.5"}
+
+@app.get("/api/legal/terms")
+async def api_legal_terms():
+    return legal_payload()
+
+@app.post("/api/legal/accept-terms")
+async def api_accept_terms(payload: LegalAcceptRequest, request: Request, db=Depends(get_db)):
+    client_host = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    try:
+        return create_acceptance(
+            db,
+            client_ip=client_host,
+            user_agent=user_agent,
+            accepted=payload.accepted,
+            supplied_hash=payload.terms_hash,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@app.get("/api/legal/status")
+async def api_legal_status(token: str | None = None, db=Depends(get_db)):
+    return validate_acceptance(db, token)
 
 @app.post("/api/audit")
 async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_db)):
@@ -78,6 +111,13 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         raise HTTPException(
             status_code=400,
             detail="Vous devez accepter l'usage responsable avant de lancer l'audit.",
+        )
+
+    legal_status = validate_acceptance(db, payload.terms_token)
+    if not legal_status.get("accepted"):
+        raise HTTPException(
+            status_code=403,
+            detail="Acceptation juridique V7 obligatoire avant d'utiliser OpenEASM.",
         )
 
     client_host = request.client.host if request.client else "unknown"
@@ -115,6 +155,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     tls_score = score_tls(tls_result, web_result)
     passive_cves = detect_passive_cves(web_result)
     cti_result = audit_cti(ip_inventory, domain)
+    service_scan = await asyncio.to_thread(audit_service_versions, domain, ip_inventory)
 
     raw_findings = collect_findings(
         dns_result,
@@ -126,6 +167,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         tls_score,
         passive_cves,
         cti_result,
+        service_scan,
     )
     domain_profile = classify_domain(dns_result, mail_result, web_result)
     findings = adjust_findings_for_profile(raw_findings, domain_profile)
@@ -140,7 +182,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "id": audit_id,
         "domain": domain,
         "created_at": created_at,
-        "mode": "public_non_intrusive_alpha",
+        "mode": "public_defensive_v7_service_version_cve",
         "verification": verification_status,
         "domain_profile": domain_profile,
         "dns": dns_result,
@@ -151,6 +193,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "subdomains": subdomains_result,
         "ip_inventory": ip_inventory,
         "passive_cves": passive_cves,
+        "service_scan": service_scan,
         "cti": cti_result,
         "patching_sla": patching_sla,
         "executive_risk": executive_risk,
@@ -159,17 +202,20 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "score": score,
         "safety": {
             "accepted_terms": payload.accepted_terms,
+            "legal_acceptance": legal_status,
             "client": client_host,
             "rate_limit": rate,
             "anti_ssrf": "HTTP/TLS only if target resolves to public IPs and no blocked IP.",
-            "active_scan": "disabled",
-            "nmap": "disabled",
-            "cve_scan": "passive_headers_only",
+            "active_scan": "enabled_light_service_version_only",
+            "nmap": service_scan.get("mode"),
+            "cve_scan": "passive_headers_and_nmap_service_version_correlation",
             "leak_search": "disabled_public_mode",
         },
         "report_filename": None,
         "json_filename": None,
     }
+
+    audit["attack_graph"] = build_attack_graph(audit)
 
     audit["report_errors"] = []
     try:
@@ -223,6 +269,17 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "items": passive_cves.get("items", [])[:30],
             "note": passive_cves.get("note"),
         },
+        "service_scan": {
+            "enabled": service_scan.get("enabled"),
+            "mode": service_scan.get("mode"),
+            "count_open_ports": service_scan.get("count_open_ports", 0),
+            "count_cves": service_scan.get("count_cves", 0),
+            "elapsed_seconds": service_scan.get("elapsed_seconds", 0),
+            "targets": service_scan.get("targets", [])[:10],
+            "open_ports": service_scan.get("open_ports", [])[:80],
+            "cves": service_scan.get("cves", [])[:50],
+            "note": service_scan.get("note"),
+        },
         "cti": {
             "summary": cti_result.get("summary", {}),
             "ip_reputation": cti_result.get("ip_reputation", [])[:30],
@@ -250,6 +307,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "report_url": f"/api/reports/{audit_id}/excel",
         "json_url": f"/api/reports/{audit_id}/json",
         "pdf_url": f"/api/reports/{audit_id}/pdf",
+        "graph_url": f"/api/audits/{audit_id}/graph",
+        "attack_graph": audit.get("attack_graph", {}),
         "report_errors": audit.get("report_errors", []),
         "summary": {
             "dns_public_ips": audit["dns"].get("public_ips", []),
@@ -263,6 +322,9 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "core_public_ip_count": ip_inventory.get("core_public_ip_count", 0),
             "third_party_provider_ip_count": ip_inventory.get("third_party_provider_ip_count", 0),
             "passive_cve_count": passive_cves.get("count", 0),
+            "service_open_port_count": service_scan.get("count_open_ports", 0),
+            "service_cve_count": service_scan.get("count_cves", 0),
+            "service_scan_elapsed_seconds": service_scan.get("elapsed_seconds", 0),
             "tls_score": tls_score.get("global_score"),
             "tls_level": tls_score.get("global_level"),
             "executive_score": executive_risk.get("overall_score"),
@@ -303,6 +365,27 @@ async def get_audit(audit_id: str, db=Depends(get_db)):
 async def api_dashboard(db=Depends(get_db)):
     return dashboard_stats(db)
 
+
+@app.get("/api/audits/{audit_id}/graph")
+async def api_audit_graph(audit_id: str, db=Depends(get_db)):
+    audit = AUDITS.get(audit_id)
+    if not audit:
+        record = get_audit_record(db, audit_id)
+        if record:
+            audit = record.audit_json
+        else:
+            raise HTTPException(status_code=404, detail="Audit introuvable.")
+    graph = audit.get("attack_graph") or build_attack_graph(audit)
+    return graph
+
+
+@app.get("/api/graph/latest")
+async def api_latest_graph(db=Depends(get_db)):
+    records = list_audits(db, limit=1)
+    if not records:
+        return {"available": False, "message": "Aucun audit disponible."}
+    audit = records[0].audit_json
+    return {"available": True, "audit_id": records[0].id, "graph": audit.get("attack_graph") or build_attack_graph(audit)}
 
 
 @app.get("/api/system/diagnostics")

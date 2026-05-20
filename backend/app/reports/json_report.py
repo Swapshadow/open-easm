@@ -8,7 +8,7 @@ REPORT_DIR = Path("/app/reports")
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 def generate_json_report(audit: dict) -> str:
-    filename = f"open_easm_v6_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"open_easm_v7_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
     path = REPORT_DIR / filename
 
     with path.open("w", encoding="utf-8") as f:

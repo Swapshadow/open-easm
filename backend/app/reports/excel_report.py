@@ -47,12 +47,13 @@ def generate_excel_report(audit: dict) -> str:
     _sheet_mail(wb, audit)
     _sheet_cti(wb, audit)
     _sheet_passive_cves(wb, audit)
+    _sheet_service_scan(wb, audit)
     _sheet_patching_sla(wb, audit)
     _sheet_passive_sources(wb, audit)
     _sheet_guards(wb, audit)
     _sheet_raw_summary(wb, audit)
 
-    filename = f"open_easm_v6_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"open_easm_v7_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
     path = REPORT_DIR / filename
     wb.save(path)
     return filename
@@ -61,7 +62,7 @@ def _executive_summary(ws, audit):
     _paint_background(ws, rows=34, cols=10)
     ws.merge_cells("A1:J2")
     c = ws["A1"]
-    c.value = "OPENEASM ALPHA - RAPPORT D'EXPOSITION EXTERNE"
+    c.value = "OPENEASM V7 - RAPPORT D'EXPOSITION EXTERNE"
     c.font = Font(bold=True, size=18, color=GOLD_LIGHT)
     c.fill = PatternFill("solid", fgColor=BLACK)
     c.alignment = Alignment(horizontal="center", vertical="center")
@@ -85,6 +86,9 @@ def _executive_summary(ws, audit):
         ("IP prestataires tiers", ip.get("third_party_provider_ip_count", 0)),
         ("Sous-domaines publics", sub.get("count", 0)),
         ("CVE potentielles passives", audit.get("passive_cves", {}).get("count", 0)),
+        ("Ports ouverts Nmap", audit.get("service_scan", {}).get("count_open_ports", 0)),
+        ("CVE service/version", audit.get("service_scan", {}).get("count_cves", 0)),
+        ("Durée scan service/version", f"{audit.get('service_scan', {}).get('elapsed_seconds', 0)} s"),
     ]
 
     row = 4
@@ -121,8 +125,8 @@ def _executive_summary(ws, audit):
 
     ws.merge_cells("D18:J25")
     ws["D18"] = (
-        "Portée : audit public non intrusif. Les constats sont localisés pour permettre une correction opérationnelle. "
-        "Les onglets techniques contiennent les sous-domaines, IP, DNS, messagerie, TLS, CTI, sources passives et garde-fous."
+        "Portée : audit défensif V7. Les constats sont localisés pour permettre une correction opérationnelle. "
+        "La détection service/version utilise Nmap -sV --version-light sans script exploit, brute, dos ou intrusive."
     )
     ws["D18"].font = Font(color=MUTED)
     ws["D18"].alignment = Alignment(wrap_text=True, vertical="top")
@@ -314,6 +318,42 @@ def _sheet_passive_cves(wb, audit):
         rows.append([item.get("hostname"), item.get("scheme"), item.get("type"), item.get("technology"), item.get("cve"), item.get("severity"), item.get("confidence"), item.get("description"), item.get("evidence"), item.get("recommendation")])
     _table_sheet(ws, "CVE POTENTIELLES PASSIVES", headers, rows or [["Aucun", "", "", "", "", "", "", "Aucune CVE passive détectée via headers HTTP.", "", "Confirmer par audit autorisé si nécessaire."]])
 
+def _sheet_service_scan(wb, audit):
+    ws = wb.create_sheet("Nmap Services")
+    scan = audit.get("service_scan", {}) or {}
+    headers = ["Hostname", "Port", "Proto", "Service", "Produit", "Version", "CPE", "CVE", "Sévérité", "CVSS", "Confiance", "Preuve"]
+    rows = []
+    for port in scan.get("open_ports", []):
+        cves = port.get("cves", []) or []
+        if cves:
+            for cve in cves:
+                rows.append([
+                    port.get("hostname"), port.get("port"), port.get("protocol"), port.get("name"),
+                    port.get("product"), port.get("version"), "\n".join(port.get("cpe", [])),
+                    cve.get("cve"), cve.get("severity"), cve.get("cvss"), cve.get("confidence"), cve.get("evidence"),
+                ])
+        else:
+            rows.append([
+                port.get("hostname"), port.get("port"), port.get("protocol"), port.get("name"),
+                port.get("product"), port.get("version"), "\n".join(port.get("cpe", [])),
+                "", "", "", "", port.get("evidence"),
+            ])
+
+    if not rows:
+        rows.append(["Aucun", "", "", "", "", "", "", "", "", "", "", scan.get("note", "Aucun port ouvert détecté ou Nmap indisponible.")])
+    _table_sheet(ws, "NMAP SERVICE / VERSION / CVE - NON EXPLOITANT", headers, rows)
+
+    meta_row = len(rows) + 8
+    ws.cell(meta_row, 1, "Mode")
+    ws.cell(meta_row, 2, scan.get("mode"))
+    ws.cell(meta_row + 1, 1, "Politique commande")
+    ws.cell(meta_row + 1, 2, scan.get("command_policy"))
+    ws.cell(meta_row + 2, 1, "Temps écoulé")
+    ws.cell(meta_row + 2, 2, f"{scan.get('elapsed_seconds', 0)} s")
+    ws.cell(meta_row + 3, 1, "Note")
+    ws.cell(meta_row + 3, 2, scan.get("note"))
+
+
 def _sheet_patching_sla(wb, audit):
     ws = wb.create_sheet("SLA")
     headers = ["ID", "Sévérité", "Catégorie", "Lieu / Source", "Constat", "Détecté le", "SLA jours", "Échéance", "Statut"]
@@ -339,7 +379,7 @@ def _sheet_passive_sources(wb, audit):
 def _sheet_guards(wb, audit):
     ws = wb.create_sheet("Garde-fous")
     rows = [[k, str(v)] for k, v in audit.get("safety", {}).items()]
-    rows.append(["Note", "Les contrôles HTTP/TLS sont bloqués lorsqu'une cible ne résout pas vers une IP publique ou résout vers une IP privée/réservée."])
+    rows.append(["Note", "Les contrôles HTTP/TLS/Nmap sont bloqués lorsqu'une cible ne résout pas vers une IP publique ou résout vers une IP privée/réservée. Nmap V7 est limité à -sV --version-light sans exploitation."])
     _table_sheet(ws, "GARDE-FOUS", ["Contrôle", "Valeur"], rows)
 
 def _sheet_raw_summary(wb, audit):
@@ -463,7 +503,9 @@ def _conclusion(audit):
         f"IP publiques : {audit.get('ip_inventory', {}).get('public_ip_count', 0)}. "
         f"Sous-domaines : {audit.get('subdomains', {}).get('count', 0)}. "
         f"Score TLS : {audit.get('tls_score', {}).get('global_score', 0)} / 100. "
-        "Les constats sont priorisés et localisés pour faciliter le plan d'action."
+        f"Ports ouverts Nmap : {audit.get('service_scan', {}).get('count_open_ports', 0)}. "
+        f"CVE service/version : {audit.get('service_scan', {}).get('count_cves', 0)}. "
+        "La détection V7 reste non exploitante et les constats sont localisés pour faciliter le plan d'action."
     )
 
 def _severity_order(sev):

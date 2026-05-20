@@ -1,13 +1,13 @@
 services:
   open-easm-db:
     image: postgres:16-alpine
-    container_name: openeasm-alpha-db
+    container_name: openeasm-v7-db
     environment:
       POSTGRES_DB: open_easm
       POSTGRES_USER: open_easm
       POSTGRES_PASSWORD: open_easm_change_me
     volumes:
-      - open_easm_v6_pgdata:/var/lib/postgresql/data
+      - open_easm_v7_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U open_easm -d open_easm"]
       interval: 5s
@@ -18,21 +18,27 @@ services:
   open-easm-api:
     build:
       context: ./backend
-    container_name: openeasm-alpha-api
+    container_name: openeasm-v7-api
     ports:
       - "8000:8000"
     volumes:
       - ./backend/reports:/app/reports
     environment:
-      - APP_NAME=OpenEASM Alpha
+      - APP_NAME=OpenEASM V7.5
       - PUBLIC_BASE_URL=http://localhost:8000
       - DATABASE_URL=postgresql+psycopg2://open_easm:open_easm_change_me@open-easm-db:5432/open_easm
       - RATE_LIMIT_REQUESTS=12
       - RATE_LIMIT_WINDOW_SECONDS=60
+      # Empty OPENEASM_NMAP_TOP_PORTS = Nmap default top 1000 ports, closer to a classic nmap scan.
+      - OPENEASM_NMAP_TOP_PORTS=
+      - OPENEASM_NMAP_HOST_TIMEOUT=120s
+      - OPENEASM_NMAP_PROCESS_TIMEOUT=150
+    cap_add:
+      - NET_RAW
     depends_on:
       open-easm-db:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  open_easm_v6_pgdata:
+  open_easm_v7_pgdata:

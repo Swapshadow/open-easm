@@ -448,7 +448,7 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); tra
 }
 
 
-/* OpenEASM Alpha Stability & Reporting Center */
+/* OpenEASM V7 Stability & Reporting Center */
 .stability-card {
   border-color: rgba(22, 163, 74, .24);
 }
@@ -554,7 +554,7 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); tra
 }
 
 
-/* OpenEASM Alpha — Executive Scoring & Risk Report */
+/* OpenEASM V7 — Executive Scoring & Risk Report */
 .app-menu {
   display: flex;
   gap: 10px;
@@ -683,7 +683,7 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); tra
 }
 
 
-/* OpenEASM Alpha — logo public sans encadrement */
+/* OpenEASM V7 — logo public sans encadrement */
 .app-logo {
   width: 190px !important;
   height: 132px !important;
@@ -712,5 +712,426 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); tra
   .app-logo {
     width: 150px !important;
     height: 104px !important;
+  }
+}
+
+/* OpenEASM V7 — avertissement juridique bloquant et progression */
+body.legal-locked {
+  overflow: hidden;
+}
+
+.legal-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(229, 9, 20, .22), transparent 30%),
+    radial-gradient(circle at 80% 15%, rgba(184, 135, 27, .24), transparent 34%),
+    rgba(16, 8, 6, .72);
+  backdrop-filter: blur(18px);
+}
+
+.legal-gate.hidden {
+  display: none;
+}
+
+.legal-dialog {
+  width: min(980px, 96vw);
+  max-height: min(88vh, 920px);
+  overflow: auto;
+  border-radius: 30px;
+  border: 1px solid rgba(212, 175, 55, .56);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(255, 247, 224, .92)),
+    var(--cream);
+  box-shadow: 0 30px 120px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .95);
+  padding: clamp(22px, 4vw, 36px);
+}
+
+.legal-header h2 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 4vw, 46px);
+  color: var(--ink);
+}
+
+.legal-text {
+  margin: 18px 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(229, 9, 20, .22);
+  background: rgba(255, 255, 255, .74);
+  color: var(--ink);
+  white-space: pre-wrap;
+  line-height: 1.62;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.legal-articles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.legal-article {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(184, 135, 27, .34);
+  background: rgba(255, 255, 255, .68);
+}
+
+.legal-article strong {
+  color: var(--red-deep);
+}
+
+.legal-article span,
+.legal-article em {
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.legal-accept {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(229, 9, 20, .28);
+  background: rgba(229, 9, 20, .07);
+  font-weight: 850;
+  color: var(--ink);
+}
+
+.legal-accept input {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--red);
+}
+
+.legal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.scan-progress {
+  margin-top: 20px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(184, 135, 27, .30);
+  background: rgba(255, 255, 255, .58);
+}
+
+.progress-top,
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.progress-top strong {
+  color: var(--ink);
+}
+
+.progress-track {
+  height: 13px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(184, 135, 27, .16);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .12);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--red), var(--gold-light));
+  transition: width .45s ease;
+}
+
+@media (max-width: 780px) {
+  .legal-articles {
+    grid-template-columns: 1fr;
+  }
+  .progress-top,
+  .progress-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   OpenEASM V7.5 - Graph Explorer & legal UX refinements
+   -------------------------------------------------------------------------- */
+.terms-box.accepted {
+  border-color: rgba(22, 163, 74, .46);
+  background: linear-gradient(135deg, rgba(22, 163, 74, .12), rgba(255,255,255,.76));
+}
+
+.terms-box input:disabled {
+  cursor: not-allowed;
+  opacity: .8;
+}
+
+.graph-card {
+  overflow: hidden;
+}
+
+.graph-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 16px;
+}
+
+.graph-stats span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(184, 135, 27, .42);
+  background: rgba(255, 255, 255, .74);
+  color: var(--ink);
+  font-size: .86rem;
+  box-shadow: 0 8px 18px rgba(45, 30, 12, .08);
+}
+
+.graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.graph-stage {
+  min-height: 560px;
+  border: 1px solid rgba(184, 135, 27, .42);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(229, 9, 20, .15), transparent 28%),
+    radial-gradient(circle at 20% 20%, rgba(212, 175, 55, .20), transparent 30%),
+    linear-gradient(135deg, rgba(20, 16, 11, .95), rgba(43, 20, 21, .92));
+  overflow: auto;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 18px 40px rgba(45, 30, 12, .18);
+  scrollbar-color: rgba(212,175,55,.68) rgba(255,255,255,.08);
+}
+
+#graphSvg {
+  width: 1320px;
+  height: 720px;
+  min-width: 1120px;
+  min-height: 560px;
+  display: block;
+}
+
+.graph-edge {
+  fill: none;
+  stroke: rgba(255,255,255,.23);
+  stroke-width: 1.15;
+}
+
+.graph-edge.cve_correlation,
+.graph-edge.has_finding {
+  stroke: rgba(229, 9, 20, .52);
+  stroke-width: 1.8;
+}
+
+.graph-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.graph-node circle {
+  stroke: rgba(255,255,255,.72);
+  stroke-width: 1.2;
+  fill: #d4af37;
+}
+
+.graph-node text {
+  fill: rgba(255,255,255,.88);
+  font-size: 13px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(20, 16, 11, .75);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.graph-node:hover circle,
+.graph-node:focus circle,
+.graph-node.selected circle {
+  stroke: #fff;
+  stroke-width: 2.4;
+}
+
+.graph-node.selected text {
+  fill: #ffe29a;
+}
+
+.graph-node.domain circle { fill: #ffe29a; }
+.graph-node.profile circle { fill: #b8871b; }
+.graph-node.subdomain circle { fill: #14b8a6; }
+.graph-node.ip circle { fill: #0ea5e9; }
+.graph-node.web circle { fill: #a78bfa; }
+.graph-node.service circle { fill: #f97316; }
+.graph-node.cve circle { fill: #e50914; }
+.graph-node.finding circle { fill: #be123c; }
+
+.graph-details {
+  min-height: 560px;
+  border: 1px solid rgba(184, 135, 27, .42);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(255,255,255,.74);
+  box-shadow: 0 10px 26px rgba(45, 30, 12, .10);
+  overflow: auto;
+}
+
+.graph-details strong {
+  color: var(--red-deep);
+  font-size: 1.05rem;
+}
+
+.graph-details h4 {
+  margin: 14px 0 6px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-size: .72rem;
+}
+
+.graph-details ul {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
+.graph-details li {
+  margin: 5px 0;
+  word-break: break-word;
+}
+
+.node-type {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--red-deep);
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px 13px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: .86rem;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.75), 0 0 12px rgba(45,30,12,.16);
+}
+.legend-dot.domain { background: #ffe29a; }
+.legend-dot.subdomain { background: #14b8a6; }
+.legend-dot.ip { background: #0ea5e9; }
+.legend-dot.service { background: #f97316; }
+.legend-dot.cve { background: #e50914; }
+.legend-dot.finding { background: #be123c; }
+
+@media (max-width: 980px) {
+  .graph-layout { grid-template-columns: 1fr; }
+  .graph-details { min-height: auto; }
+}
+
+/* V7.5 hard-close juridique : évite le blocage visuel après acceptation backend. */
+.legal-gate[hidden],
+.legal-gate.hidden {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   OpenEASM V7.5 - logo cyborg et Graph Explorer grand format
+   -------------------------------------------------------------------------- */
+.app-logo {
+  width: 146px !important;
+  height: 146px !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 16px 34px rgba(0,0,0,.26)) drop-shadow(0 0 18px rgba(14,165,233,.16));
+}
+
+#page-graph.active {
+  width: min(96vw, 1720px);
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+#page-graph .graph-card {
+  padding: 28px;
+}
+
+#page-graph .section-header {
+  align-items: flex-start;
+}
+
+.graph-layout {
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 18px;
+}
+
+.graph-stage {
+  min-height: clamp(720px, 76vh, 980px);
+  max-height: none;
+}
+
+#graphSvg {
+  width: 1540px;
+  height: 900px;
+  min-width: 1540px;
+  min-height: 850px;
+}
+
+.graph-details {
+  min-height: clamp(720px, 76vh, 980px);
+}
+
+.graph-node text {
+  font-size: 12.5px;
+}
+
+.graph-edge {
+  stroke-width: 1.05;
+}
+
+@media (max-width: 1180px) {
+  #page-graph.active {
+    width: min(98vw, 1180px);
+  }
+  .graph-layout {
+    grid-template-columns: 1fr;
+  }
+  .graph-details {
+    min-height: 220px;
   }
 }
