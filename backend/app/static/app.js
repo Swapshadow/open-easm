@@ -1,6 +1,6 @@
 
 // -----------------------------------------------------------------------------
-// OpenEASM V7.5 visual layer: Matrix 0/1 + premium meteors
+// OpenEASM Beta visual layer: Matrix 0/1 + premium meteors
 // -----------------------------------------------------------------------------
 (function(){
   function initMatrixRain(){
@@ -253,7 +253,7 @@ function setTermsAccepted(value) {
 
   if (termsStatus) {
     if (termsAccepted) {
-      termsStatus.textContent = "Avertissement juridique accepté : vous pouvez lancer l’audit V7.5.";
+      termsStatus.textContent = "Avertissement juridique accepté : vous pouvez lancer l’audit Beta.";
       termsStatus.className = "terms-status ok";
     } else {
       termsStatus.textContent = "Avertissement juridique non accepté : le bouton d’audit est désactivé.";
@@ -356,7 +356,7 @@ async function acceptLegalTerms() {
   try {
     const data = await fetchJsonSafe("/api/legal/accept-terms", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-OpenEASM-Version": "v7.5" },
+      headers: { "Content-Type": "application/json", "X-OpenEASM-Version": "beta" },
       body: JSON.stringify({ accepted: true, terms_hash: legalTerms.hash, terms_version: legalTerms.version }),
       timeoutMs: 15000,
     });
@@ -401,7 +401,7 @@ async function runAudit() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-OpenEASM-Version": "v7.5"
+        "X-OpenEASM-Version": "beta"
       },
       body: JSON.stringify({ domain, accepted_terms: true, terms_token: termsToken }),
     });
@@ -1212,7 +1212,7 @@ function renderGraphExplorer(graph) {
     <span>${escapeHtml(graph.metrics?.public_ips ?? 0)} IP publiques</span>
     <span>${escapeHtml(graph.metrics?.open_ports ?? 0)} ports Nmap</span>
     <span>${escapeHtml(graph.metrics?.service_cves ?? 0)} CVE service/version</span>
-    <span>Vue V7.5 grand format</span>
+    <span>Vue Beta grand format</span>
   `;
 
   graphSvg.innerHTML = "";
@@ -1291,7 +1291,7 @@ function renderGraphExplorer(graph) {
     nodeLayer.appendChild(group);
   }
 
-  graphDetails.innerHTML = `<strong>Graph Explorer V7.5</strong><p>${escapeHtml(graph.domain || "Domaine")} : cartographie grand format par colonnes. Clique sur un nœud pour afficher ses relations et propriétés. La zone du graphe a été élargie pour visualiser davantage de relations sans perdre la lisibilité.</p>`;
+  graphDetails.innerHTML = `<strong>Graph Explorer Beta</strong><p>${escapeHtml(graph.domain || "Domaine")} : cartographie grand format par colonnes. Clique sur un nœud pour afficher ses relations et propriétés. La zone du graphe a été élargie pour visualiser davantage de relations sans perdre la lisibilité.</p>`;
   centerGraphStage();
 }
 

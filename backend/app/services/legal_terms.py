@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.database import LegalAcceptance
 
-TERMS_VERSION = "v7.5-fr-2026-05-20"
+TERMS_VERSION = "beta-fr-2026-05-20"
 
-LEGAL_WARNING_TEXT = """AVERTISSEMENT JURIDIQUE ET CONDITIONS D’UTILISATION D’OPENEASM V7.5
+LEGAL_WARNING_TEXT = """AVERTISSEMENT JURIDIQUE ET CONDITIONS D’UTILISATION D’OPENEASM Beta
 
 OpenEASM est un outil d’External Attack Surface Management destiné à aider les organisations à identifier leur exposition publique sur Internet.
 
