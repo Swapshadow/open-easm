@@ -14,7 +14,8 @@ OpenEASM réalise des contrôles publics non exploitants : DNS, SPF, DMARC, MX, 
 
 Sur Debian, Ubuntu ou Kali :
 
-```bash
+```bash<img width="1912" height="948" alt="image" src="https://github.com/user-attachments/assets/7f205654-7ff6-4c0d-bdec-25a965efeadc" />
+
 sudo apt update
 sudo apt install git docker.io docker-compose -y
 sudo systemctl enable --now docker
