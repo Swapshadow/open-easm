@@ -56,6 +56,22 @@ OpenEASM réalise des contrôles publics non exploitants : DNS, SPF, DMARC, MX, 
 
 ---
 
+## Captures d’écran
+
+### Interface d’audit
+
+<img src="docs/screenshots/audit.png" alt="Interface d’audit OpenEASM Beta" width="900">
+
+### Graph Explorer
+
+<img src="docs/screenshots/graphexplorer.png" alt="Graph Explorer OpenEASM Beta" width="900">
+
+### Rapport professionnel
+
+<img src="docs/screenshots/rapport.png" alt="Rapport professionnel OpenEASM Beta" width="900">
+
+---
+
 ## Usage responsable
 
 OpenEASM Beta est conçu pour un usage défensif, autorisé et responsable.
