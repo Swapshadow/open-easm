@@ -38,17 +38,15 @@ from app.services.legal_terms import legal_payload, create_acceptance, validate_
 from app.services.attack_graph import build_attack_graph
 
 app = FastAPI(
-    title="OpenEASM V7.5",
-    description="OpenEASM V7.5 : EASM défensif avec avertissement juridique bloquant, scoring exécutif, rapports et détection service/version/CVE non exploitante.",
-    version="v7.5",
+    title="OpenEASM Beta",
+    description="OpenEASM Beta : EASM défensif avec avertissement juridique bloquant, Graph Explorer, Nmap service/version/CVE non exploitant et rapports professionnels.",
+    version="beta-1.0",
 )
-
 
 
 @app.on_event("startup")
 def startup_event():
     init_db_with_retry()
-
 
 
 @app.exception_handler(Exception)
@@ -68,7 +66,7 @@ REPORT_DIR = Path("/app/reports")
 class AuditRequest(BaseModel):
     domain: str = Field(..., description="Nom de domaine à auditer, exemple : example.com")
     accepted_terms: bool = Field(False, description="L'utilisateur confirme être autorisé ou rester dans le cadre défensif autorisé.")
-    terms_token: str | None = Field(None, description="Jeton d'acceptation juridique V7 délivré par /api/legal/accept-terms.")
+    terms_token: str | None = Field(None, description="Jeton d'acceptation juridique délivré par /api/legal/accept-terms.")
 
 class LegalAcceptRequest(BaseModel):
     accepted: bool = Field(False, description="Confirme que l'utilisateur a lu et accepté les conditions.")
@@ -80,7 +78,7 @@ class DomainVerificationRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "openeasm-v7.5"}
+    return {"status": "ok", "service": "openeasm-beta", "version": "beta-1.0"}
 
 @app.get("/api/legal/terms")
 async def api_legal_terms():
@@ -117,7 +115,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     if not legal_status.get("accepted"):
         raise HTTPException(
             status_code=403,
-            detail="Acceptation juridique V7 obligatoire avant d'utiliser OpenEASM.",
+            detail="Acceptation juridique obligatoire avant d'utiliser OpenEASM.",
         )
 
     client_host = request.client.host if request.client else "unknown"
@@ -182,7 +180,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "id": audit_id,
         "domain": domain,
         "created_at": created_at,
-        "mode": "public_defensive_v7_service_version_cve",
+        "mode": "public_defensive_beta_service_version_cve",
         "verification": verification_status,
         "domain_profile": domain_profile,
         "dns": dns_result,
