@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from html import escape
 from pathlib import Path
+from typing import Any
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
@@ -13,7 +14,6 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
     Image as RLImage,
-    KeepTogether,
     LongTable,
     PageBreak,
     Paragraph,
@@ -31,7 +31,6 @@ INK = colors.HexColor("#17120D")
 MUTED = colors.HexColor("#61584D")
 RED = colors.HexColor("#B00020")
 RED_DARK = colors.HexColor("#65000B")
-RED_SOFT = colors.HexColor("#F6D7D9")
 GOLD = colors.HexColor("#B8871B")
 GOLD_DARK = colors.HexColor("#7B5500")
 GOLD_LIGHT = colors.HexColor("#FFE2A0")
@@ -42,6 +41,9 @@ ROW_ALT = colors.HexColor("#FFF8E7")
 WHITE = colors.white
 GREEN = colors.HexColor("#1F8F5F")
 ORANGE = colors.HexColor("#D06B00")
+
+MAX_CELL_CHARS = 260
+MAX_LONG_CELL_CHARS = 420
 
 
 class ScoreGauge(Flowable):
@@ -94,6 +96,12 @@ class SeverityLegend(Flowable):
 
 
 def generate_pdf_report(audit: dict) -> str:
+    """Generate the professional OpenEASM PDF report.
+
+    Beta fix: large subsections such as subdomains and IP inventory are not nested
+    inside another table anymore. ReportLab cannot split a large nested table across
+    pages, which caused the PDF export to fail when many subdomains were present.
+    """
     filename = f"open_easm_beta_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
     path = REPORT_DIR / filename
 
@@ -126,7 +134,6 @@ def generate_pdf_report(audit: dict) -> str:
     story.append(Paragraph("Synthèse exécutive", styles["Section"]))
     story.append(_callout(str(risk.get("board_summary") or _conclusion(audit)), styles, tone="neutral"))
     story.append(Spacer(1, 0.20 * cm))
-
     story.append(Paragraph("Plan d'action priorisé", styles["Section"]))
     story.append(_actions_table(audit, styles, limit=12))
 
@@ -152,8 +159,14 @@ def generate_pdf_report(audit: dict) -> str:
     story.append(_table(graph_rows, [5.2 * cm, 3.7 * cm, 16.6 * cm], styles=styles))
     story.append(Spacer(1, 0.25 * cm))
 
-    cols = [[Paragraph("Sous-domaines publics", styles["SectionSmall"]), _subdomains_table(audit, styles, limit=38)], [Paragraph("Inventaire IP", styles["SectionSmall"]), _ip_table(audit, styles, limit=38)]]
-    story.append(Table([cols], colWidths=[12.8 * cm, 12.8 * cm], style=[("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8)]))
+    # Important: do not nest the subdomain and IP tables in a single parent table.
+    # Nested tables are treated as one unbreakable flowable by ReportLab. If the
+    # list is long, the PDF generation fails with "Flowable ... too large".
+    story.append(Paragraph("Sous-domaines publics", styles["SectionSmall"]))
+    story.append(_subdomains_table(audit, styles, limit=80))
+    story.append(Spacer(1, 0.25 * cm))
+    story.append(Paragraph("Inventaire IP", styles["SectionSmall"]))
+    story.append(_ip_table(audit, styles, limit=80))
 
     story.append(PageBreak())
     story.append(Paragraph("Nmap service / version / CVE", styles["Section"]))
@@ -163,7 +176,7 @@ def generate_pdf_report(audit: dict) -> str:
         tone="safe",
     ))
     story.append(Spacer(1, 0.16 * cm))
-    story.append(_nmap_table(audit, styles, limit=60))
+    story.append(_nmap_table(audit, styles, limit=80))
 
     story.append(PageBreak())
     story.append(Paragraph("Annexes : portée, limites et responsabilité", styles["Section"]))
@@ -186,7 +199,6 @@ def _styles():
     base = getSampleStyleSheet()
     base.add(ParagraphStyle("CoverTitle", parent=base["Title"], textColor=RED_DARK, fontSize=29, leading=33, alignment=TA_LEFT, spaceAfter=3))
     base.add(ParagraphStyle("CoverSubtitle", parent=base["BodyText"], textColor=MUTED, fontSize=10.3, leading=14, spaceAfter=4))
-    base.add(ParagraphStyle("Eyebrow", parent=base["BodyText"], textColor=GOLD_DARK, fontSize=7.5, leading=9, fontName="Helvetica-Bold", spaceAfter=2))
     base.add(ParagraphStyle("Section", parent=base["Heading2"], textColor=RED_DARK, fontSize=15.2, leading=18, spaceBefore=5, spaceAfter=7))
     base.add(ParagraphStyle("SectionSmall", parent=base["Heading3"], textColor=GOLD_DARK, fontSize=11.0, leading=13, spaceBefore=3, spaceAfter=5))
     base.add(ParagraphStyle("Body", parent=base["BodyText"], textColor=INK, fontSize=8.5, leading=12))
@@ -208,7 +220,7 @@ def _cover_block(audit: dict, styles):
         Paragraph("Rapport professionnel d'exposition externe", styles["CoverSubtitle"]),
     ])
     right = Paragraph(
-        f"<b>Domaine</b> : {escape(domain)}<br/><b>Génération</b> : {escape(str(created))}<br/><b>Mode</b> : audit défensif public, service/version/CVE non exploitant<br/><b>Livrables</b> : PDF, Excel, JSON",
+        f"<b>Domaine</b> : {escape(str(domain))}<br/><b>Génération</b> : {escape(str(created))}<br/><b>Mode</b> : audit défensif public, service/version/CVE non exploitant<br/><b>Livrables</b> : PDF, Excel, JSON",
         styles["CoverSubtitle"],
     )
     t = Table([[left, right]], colWidths=[15.8 * cm, 9.8 * cm])
@@ -235,9 +247,7 @@ def _kpi_cards(audit: dict, styles):
         ("Surface publique", f"{audit.get('ip_inventory', {}).get('public_ip_count', 0)} IP", f"{audit.get('subdomains', {}).get('count', 0)} sous-domaines"),
         ("Nmap", f"{scan.get('count_open_ports', 0)} ports", f"{scan.get('count_cves', 0)} CVE corrélées"),
     ]
-    row = []
-    for label, value, note in items:
-        row.append(Paragraph(f"<b>{escape(str(label))}</b><br/><font size='15' color='#65000B'><b>{escape(str(value))}</b></font><br/><font color='#7B5500'>{escape(str(note))}</font>", styles["Body"]))
+    row = [Paragraph(f"<b>{escape(str(label))}</b><br/><font size='15' color='#65000B'><b>{escape(str(value))}</b></font><br/><font color='#7B5500'>{escape(str(note))}</font>", styles["Body"]) for label, value, note in items]
     t = Table([row], colWidths=[6.25 * cm] * 4)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), CARD),
@@ -255,8 +265,13 @@ def _kpi_cards(audit: dict, styles):
 def _score_panel(audit: dict, styles):
     score = audit.get("score", {}) or {}
     risk = audit.get("executive_risk", {}) or {}
-    left = [Paragraph("Lecture rapide", styles["SectionSmall"]), Paragraph(_conclusion(audit), styles["Body"])]
-    right = [Paragraph("Score global", styles["SectionSmall"]), ScoreGauge(score.get("score", 0), score.get("max_score", 1000)), Spacer(1, 0.12 * cm), Paragraph(f"Niveau : <b>{escape(str(score.get('level', 'N/A')))}</b> | Posture : <b>{escape(str(risk.get('posture', 'N/A')))}</b>", styles["Body"])]
+    left = [Paragraph("Lecture rapide", styles["SectionSmall"]), Paragraph(_p_text(_conclusion(audit), MAX_LONG_CELL_CHARS), styles["Body"])]
+    right = [
+        Paragraph("Score global", styles["SectionSmall"]),
+        ScoreGauge(score.get("score", 0), score.get("max_score", 1000)),
+        Spacer(1, 0.12 * cm),
+        Paragraph(f"Niveau : <b>{escape(str(score.get('level', 'N/A')))}</b> | Posture : <b>{escape(str(risk.get('posture', 'N/A')))}</b>", styles["Body"]),
+    ]
     t = Table([[left, right]], colWidths=[13.0 * cm, 12.5 * cm])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), CARD),
@@ -300,36 +315,45 @@ def _findings_table(audit: dict, styles, limit: int = 30):
     return _table(rows, [2.1 * cm, 3.1 * cm, 5.2 * cm, 8.0 * cm, 8.2 * cm], small=True, styles=styles)
 
 
-def _subdomains_table(audit: dict, styles, limit: int = 40):
+def _subdomains_table(audit: dict, styles, limit: int = 80):
     sub = audit.get("subdomains", {}) or {}
+    values = sub.get("subdomains") or []
     rows = [["Sous-domaine", "Source"]]
-    for name in (sub.get("subdomains") or [])[:limit]:
+    for name in values[:limit]:
         rows.append([name, sub.get("source", "passif")])
+    if len(values) > limit:
+        rows.append([f"... {len(values) - limit} sous-domaines supplémentaires masqués dans le PDF", "Voir export JSON/Excel"])
     if len(rows) == 1:
         rows.append(["Aucun", sub.get("source", "passif")])
-    return _table(rows, [8.8 * cm, 3.4 * cm], small=True, styles=styles)
+    return _table(rows, [18.0 * cm, 7.0 * cm], small=True, styles=styles)
 
 
-def _ip_table(audit: dict, styles, limit: int = 40):
+def _ip_table(audit: dict, styles, limit: int = 80):
     rows = [["IP", "Périmètre", "Hostnames"]]
     inv = audit.get("ip_inventory", {}) or {}
-    for item in (inv.get("unique_ips") or inv.get("display_ips") or [])[:limit]:
-        rows.append([item.get("ip", ""), item.get("scope", ""), ", ".join(item.get("hostnames", [])[:4])])
+    values = inv.get("unique_ips") or inv.get("display_ips") or []
+    for item in values[:limit]:
+        rows.append([item.get("ip", ""), item.get("scope", ""), ", ".join(item.get("hostnames", [])[:5])])
+    if len(values) > limit:
+        rows.append(["...", f"{len(values) - limit} IP supplémentaires masquées", "Voir export JSON/Excel"])
     if len(rows) == 1:
         rows.append(["Aucune", "N/A", "N/A"])
-    return _table(rows, [3.2 * cm, 2.7 * cm, 6.6 * cm], small=True, styles=styles)
+    return _table(rows, [4.0 * cm, 4.0 * cm, 17.0 * cm], small=True, styles=styles)
 
 
-def _nmap_table(audit: dict, styles, limit: int = 70):
+def _nmap_table(audit: dict, styles, limit: int = 80):
     scan = audit.get("service_scan", {}) or {}
     rows = [["Hôte", "Port", "Service", "Produit", "Version", "CVE", "Sévérité"]]
-    for port in scan.get("open_ports", [])[:limit]:
+    ports = scan.get("open_ports", []) or []
+    for port in ports[:limit]:
         cves = port.get("cves", []) or []
         if cves:
-            for cve in cves:
-                rows.append([port.get("hostname", ""), f"{port.get('port', '')}/{port.get('protocol', 'tcp')}", port.get("name", ""), port.get("product", ""), port.get("version", ""), cve.get("cve", ""), cve.get("severity", "")])
+            for cve in cves[:4]:
+                rows.append([_host(port), f"{port.get('port', '')}/{port.get('protocol', 'tcp')}", _service(port), port.get("product", ""), port.get("version", ""), cve.get("cve", ""), cve.get("severity", "")])
         else:
-            rows.append([port.get("hostname", ""), f"{port.get('port', '')}/{port.get('protocol', 'tcp')}", port.get("name", ""), port.get("product", ""), port.get("version") or "Version non exposée", "", ""])
+            rows.append([_host(port), f"{port.get('port', '')}/{port.get('protocol', 'tcp')}", _service(port), port.get("product", ""), port.get("version") or "Version non exposée", "", ""])
+    if len(ports) > limit:
+        rows.append(["...", "", "", "", f"{len(ports) - limit} ports supplémentaires masqués", "Voir export JSON/Excel", ""])
     if len(rows) == 1:
         rows.append(["Aucun", "", "", "", "", "", scan.get("note", "Aucun port ouvert détecté ou Nmap indisponible.")])
     return _table(rows, [4.4 * cm, 2.2 * cm, 2.9 * cm, 4.2 * cm, 3.5 * cm, 3.4 * cm, 2.5 * cm], small=True, styles=styles)
@@ -338,7 +362,7 @@ def _nmap_table(audit: dict, styles, limit: int = 70):
 def _callout(text: str, styles, tone: str = "neutral"):
     bg = colors.HexColor("#ECFFF5") if tone == "safe" else CARD_ALT
     bar = GREEN if tone == "safe" else GOLD
-    table = Table([[Paragraph(escape(text), styles["Body"])]], colWidths=[25.5 * cm])
+    table = Table([[Paragraph(_p_text(text, MAX_LONG_CELL_CHARS), styles["Body"])]], colWidths=[25.5 * cm])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), bg),
         ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
@@ -360,8 +384,10 @@ def _table(data, col_widths, small=False, header=True, styles=None):
         new_row = []
         for value in row:
             style = header_style if header and r == 0 else cell_style
-            new_row.append(Paragraph(escape(str(value if value is not None else "")).replace("\n", "<br/>"), style))
+            max_chars = MAX_LONG_CELL_CHARS if r == 0 else MAX_CELL_CHARS
+            new_row.append(Paragraph(_p_text(value, max_chars), style))
         converted.append(new_row)
+
     table = LongTable(converted, colWidths=col_widths, repeatRows=1 if header else 0, splitByRow=1)
     ts = [
         ("BACKGROUND", (0, 0), (-1, -1), CARD),
@@ -412,6 +438,22 @@ def _conclusion(audit):
         f"{audit.get('service_scan', {}).get('count_cves', 0)} CVE corrélées par service/version. "
         "Les résultats sont priorisés pour faciliter la décision et la correction opérationnelle."
     )
+
+
+def _p_text(value: Any, max_chars: int = MAX_CELL_CHARS) -> str:
+    text = str(value if value is not None else "")
+    text = text.replace("\r", "").strip()
+    if len(text) > max_chars:
+        text = text[: max_chars - 1] + "…"
+    return escape(text).replace("\n", "<br/>")
+
+
+def _host(port: dict) -> str:
+    return str(port.get("hostname") or port.get("host") or port.get("ip") or "")
+
+
+def _service(port: dict) -> str:
+    return str(port.get("name") or port.get("service") or "")
 
 
 def _loc(loc):
