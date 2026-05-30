@@ -38,6 +38,7 @@ const summaryBox = document.getElementById("summary");
 const findingsBox = document.getElementById("findings");
 const reportLink = document.getElementById("reportLink");
 const pdfLink = document.getElementById("pdfLink");
+const htmlLink = document.getElementById("htmlLink");
 const jsonLink = document.getElementById("jsonLink");
 const subdomainsBox = document.getElementById("subdomains");
 const subCount = document.getElementById("subCount");
@@ -552,6 +553,7 @@ function renderReportsCenter(items) {
       <div class="report-actions">
         ${item.excel_exists ? `<a class="button-secondary small" href="${escapeHtml(item.excel_url)}" target="_blank">Excel</a>` : `<span class="report-missing">Excel manquant</span>`}
         ${item.pdf_exists ? `<a class="button-secondary small gold" href="${escapeHtml(item.pdf_url)}" target="_blank">PDF</a>` : `<span class="report-missing">PDF manquant</span>`}
+        ${item.html_url ? `<a class="button-secondary small" href="${escapeHtml(item.html_url)}" target="_blank">HTML</a>` : `<span class="report-missing">HTML manquant</span>`}
         ${item.json_exists ? `<a class="button-secondary small" href="${escapeHtml(item.json_url)}" target="_blank">JSON</a>` : `<span class="report-missing">JSON manquant</span>`}
       </div>
     `;
@@ -864,6 +866,7 @@ function renderResults(data) {
 
   reportLink.href = data.report_url;
   pdfLink.href = data.pdf_url;
+  if (htmlLink) htmlLink.href = data.html_url;
   jsonLink.href = data.json_url;
   if (data.report_errors && data.report_errors.length) {
     const li = document.createElement("li");

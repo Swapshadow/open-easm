@@ -39,6 +39,7 @@ def save_audit(db: Session, audit: dict) -> None:
         excel_filename=audit.get("report_filename"),
         json_filename=audit.get("json_filename"),
         pdf_filename=audit.get("pdf_filename"),
+        html_filename=audit.get("html_filename"),
         audit_json=audit,
     )
     db.merge(record)
