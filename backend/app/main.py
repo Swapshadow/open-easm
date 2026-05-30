@@ -28,6 +28,7 @@ from app.services.finding_location import enrich_findings_locations
 from app.reports.excel_report import generate_excel_report
 from app.reports.json_report import generate_json_report
 from app.reports.pdf_report import generate_pdf_report
+from app.reports.html_report import generate_html_report
 from app.database import init_db_with_retry, get_db
 from app.services.storage import save_audit, list_audits, get_audit_record, dashboard_stats, compare_latest, delete_audit, delete_all_audits, delete_domain_audits
 from app.services.domain_verification import start_verification, check_verification, get_domain_status, list_verified_domains, delete_verification, serialize_verification
@@ -211,6 +212,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         },
         "report_filename": None,
         "json_filename": None,
+        "html_filename": None,
     }
 
     audit["attack_graph"] = build_attack_graph(audit)
@@ -233,6 +235,12 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         audit["pdf_filename"] = pdf_filename
     except Exception as exc:
         audit["report_errors"].append(f"PDF: {exc}")
+
+    try:
+        html_filename = generate_html_report(audit)
+        audit["html_filename"] = html_filename
+    except Exception as exc:
+        audit["report_errors"].append(f"HTML: {exc}")
 
     AUDITS[audit_id] = audit
     save_audit(db, audit)
@@ -305,6 +313,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "report_url": f"/api/reports/{audit_id}/excel",
         "json_url": f"/api/reports/{audit_id}/json",
         "pdf_url": f"/api/reports/{audit_id}/pdf",
+        "html_filename": audit.get("html_filename"),
+        "html_url": f"/api/reports/{audit_id}/html",
         "graph_url": f"/api/audits/{audit_id}/graph",
         "attack_graph": audit.get("attack_graph", {}),
         "report_errors": audit.get("report_errors", []),
@@ -409,12 +419,15 @@ async def api_reports_center(limit: int = 100, domain: str | None = None, db=Dep
             "excel_filename": r.excel_filename,
             "json_filename": r.json_filename,
             "pdf_filename": r.pdf_filename,
+            "html_filename": r.html_filename or (r.audit_json or {}).get("html_filename"),
             "excel_exists": bool(r.excel_filename and (REPORT_DIR / r.excel_filename).exists()),
             "json_exists": bool(r.json_filename and (REPORT_DIR / r.json_filename).exists()),
             "pdf_exists": bool(r.pdf_filename and (REPORT_DIR / r.pdf_filename).exists()),
+            "html_exists": bool((r.html_filename or (r.audit_json or {}).get("html_filename")) and (REPORT_DIR / (r.html_filename or (r.audit_json or {}).get("html_filename"))).exists()),
             "excel_url": f"/api/reports/{r.id}/excel",
             "json_url": f"/api/reports/{r.id}/json",
             "pdf_url": f"/api/reports/{r.id}/pdf",
+            "html_url": f"/api/reports/{r.id}/html",
         })
     return {
         "count": len(items),
@@ -545,6 +558,40 @@ async def download_json_report(audit_id: str, db=Depends(get_db)):
     return FileResponse(
         path,
         media_type="application/json",
+        filename=filename,
+    )
+
+
+@app.get("/api/reports/{audit_id}/html")
+async def download_html_report(audit_id: str, db=Depends(get_db)):
+    audit = AUDITS.get(audit_id)
+    record = None
+    if not audit:
+        record = get_audit_record(db, audit_id)
+        if record:
+            audit = record.audit_json
+        else:
+            raise HTTPException(status_code=404, detail="Audit introuvable.")
+
+    filename = audit.get("html_filename") or (record.html_filename if record else None)
+    path = REPORT_DIR / filename if filename else None
+    if not filename or not path or not path.exists():
+        try:
+            filename = generate_html_report(audit)
+            audit["html_filename"] = filename
+            if audit_id in AUDITS:
+                AUDITS[audit_id] = audit
+            save_audit(db, audit)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Impossible de générer le rapport HTML: {exc}")
+        path = REPORT_DIR / filename
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Fichier HTML introuvable.")
+
+    return FileResponse(
+        path,
+        media_type="text/html",
         filename=filename,
     )
 

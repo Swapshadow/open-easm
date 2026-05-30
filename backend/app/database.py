@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Text, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/reports/open_easm_dev.sqlite3")
@@ -34,6 +34,7 @@ class AuditRecord(Base):
     excel_filename = Column(String(255), nullable=True)
     json_filename = Column(String(255), nullable=True)
     pdf_filename = Column(String(255), nullable=True)
+    html_filename = Column(String(255), nullable=True)
     audit_json = Column(JSON, nullable=False)
 
 class FindingRecord(Base):
@@ -50,11 +51,24 @@ class FindingRecord(Base):
     fingerprint = Column(String(512), index=True, nullable=False)
     finding_json = Column(JSON, nullable=False)
 
+def _ensure_audit_html_column() -> None:
+    """Add html_filename to existing databases without breaking older audits."""
+    inspector = inspect(engine)
+    if "audits" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("audits")}
+    if "html_filename" in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE audits ADD COLUMN html_filename VARCHAR(255)"))
+
+
 def init_db_with_retry(retries: int = 30, delay: float = 2.0):
     last_error = None
     for _ in range(retries):
         try:
             Base.metadata.create_all(bind=engine)
+            _ensure_audit_html_column()
             return
         except Exception as exc:
             last_error = exc
