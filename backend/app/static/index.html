@@ -276,27 +276,34 @@
     </section>
   </main>
 
+  <script src="/app.js?v=beta-reporting-html-fix-v3"></script>
   <script>
-    document.addEventListener("click", function (event) {
-      const link = event.target.closest("a");
-      if (!link) return;
+    (function () {
+      function patchReportLinks() {
+        document.querySelectorAll("a[href*='/api/reports/'][href$='/html']").forEach(function (link) {
+          link.setAttribute("download", "open_easm_report.html");
+          link.removeAttribute("target");
+        });
 
-      const href = link.getAttribute("href") || "";
-      if (!href.includes("/api/reports/") || !href.endsWith("/html")) return;
+        document.querySelectorAll("#reportsCenter .report-actions").forEach(function (actions) {
+          if (actions.querySelector("a[href$='/html']")) return;
+          var source = actions.querySelector("a[href$='/excel'],a[href$='/pdf'],a[href$='/json']");
+          if (!source) return;
+          var htmlButton = document.createElement("a");
+          htmlButton.className = "button-secondary small";
+          htmlButton.href = source.href.replace(/\/(excel|pdf|json)(\?.*)?$/, "/html");
+          htmlButton.textContent = "HTML";
+          htmlButton.setAttribute("download", "open_easm_report.html");
+          var jsonButton = actions.querySelector("a[href$='/json']");
+          actions.insertBefore(htmlButton, jsonButton || null);
+        });
+      }
 
-      event.preventDefault();
-      event.stopPropagation();
-
-      const forcedDownload = document.createElement("a");
-      forcedDownload.href = href;
-      forcedDownload.download = "";
-      forcedDownload.rel = "noopener";
-      forcedDownload.style.display = "none";
-      document.body.appendChild(forcedDownload);
-      forcedDownload.click();
-      forcedDownload.remove();
-    }, true);
+      document.addEventListener("DOMContentLoaded", patchReportLinks);
+      window.addEventListener("load", patchReportLinks);
+      document.addEventListener("click", function () { setTimeout(patchReportLinks, 250); }, true);
+      setInterval(patchReportLinks, 700);
+    })();
   </script>
-  <script src="/app.js?v=beta-reporting"></script>
 </body>
 </html>
