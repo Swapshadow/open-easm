@@ -1135,3 +1135,21 @@ body.legal-locked {
     min-height: 220px;
   }
 }
+
+/* Beta 26.6 canonical graph explorer */
+.graph-controls { display: grid; gap: 10px; margin: 12px 0 14px; }
+.graph-modes, .graph-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.graph-modes button.active { background: var(--red); color: #fff; border-color: rgba(229,9,20,.75); }
+.graph-filters label { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid rgba(184,135,27,.32); border-radius: 999px; background: rgba(255,255,255,.68); color: var(--muted); font-size: .82rem; font-weight: 800; }
+.graph-stage { position: relative; overflow: auto; resize: vertical; min-height: clamp(600px, 70vh, 900px); contain: layout paint; }
+#graphSvg { width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 620px !important; max-width: none; transition: transform .16s ease; }
+.graph-layout { grid-template-columns: minmax(0,1fr); }
+.graph-details { min-height: 180px !important; max-height: 340px; }
+.graph-edge { stroke-opacity: .72; }
+.graph-edge.canonical_host, .graph-edge.dns_resolution, .graph-edge.dns_a { stroke: rgba(14,165,233,.48); }
+.graph-edge.web_service, .graph-edge.exposes_service { stroke: rgba(249,115,22,.50); }
+.graph-edge.uses_technology { stroke: rgba(167,139,250,.50); }
+.graph-edge.has_finding, .graph-edge.cve_correlation { stroke: rgba(229,9,20,.56); }
+.graph-node.technology circle { fill: #8b5cf6; }
+.legend-dot.technology { background: #8b5cf6; }
+@media (min-width: 1280px) { .graph-stage { min-height: clamp(680px, 72vh, 960px); } }

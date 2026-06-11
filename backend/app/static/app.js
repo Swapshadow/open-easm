@@ -92,6 +92,9 @@ const serviceScanCount = document.getElementById("serviceScanCount");
 const serviceScanBox = document.getElementById("serviceScanBox");
 const reloadGraphBtn = document.getElementById("reloadGraphBtn");
 const fitGraphBtn = document.getElementById("fitGraphBtn");
+const fullGraphBtn = document.getElementById("fullGraphBtn");
+const graphModes = document.getElementById("graphModes");
+const graphFilters = document.getElementById("graphFilters");
 const graphStats = document.getElementById("graphStats");
 const graphSvg = document.getElementById("graphSvg");
 const graphStage = document.querySelector(".graph-stage");
@@ -105,6 +108,8 @@ let progressTimer = null;
 let progressStartedAt = 0;
 let currentAuditId = null;
 let currentGraph = null;
+let currentGraphMode = "summary";
+let graphZoom = 1;
 
 const SCAN_STEPS = [
   { at: 0, text: "Initialisation et garde-fous" },
@@ -1200,9 +1205,10 @@ function renderGraphExplorer(graph) {
     return;
   }
 
-  const nodes = graph.nodes.slice(0, 220).map(n => ({ ...n }));
+  const filtered = filterGraphForDisplay(graph);
+  const nodes = filtered.nodes.map(n => ({ ...n }));
   const nodeIds = new Set(nodes.map(n => n.id));
-  const edges = graph.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target)).slice(0, 440);
+  const edges = filtered.edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
   const layout = computeGraphPositions(nodes, edges);
   const positions = layout.positions;
   const width = layout.width;
@@ -1215,15 +1221,15 @@ function renderGraphExplorer(graph) {
     <span>${escapeHtml(graph.metrics?.public_ips ?? 0)} IP publiques</span>
     <span>${escapeHtml(graph.metrics?.open_ports ?? 0)} ports Nmap</span>
     <span>${escapeHtml(graph.metrics?.service_cves ?? 0)} CVE service/version</span>
-    <span>Vue Beta grand format</span>
+    <span>${escapeHtml(currentGraphMode)} · aliases: ${escapeHtml(graph.metrics?.aliases_grouped ?? 0)}</span>
   `;
 
   graphSvg.innerHTML = "";
   graphSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  graphSvg.setAttribute("width", String(width));
-  graphSvg.setAttribute("height", String(height));
-  graphSvg.style.width = `${width}px`;
-  graphSvg.style.height = `${height}px`;
+  graphSvg.removeAttribute("width");
+  graphSvg.removeAttribute("height");
+  graphSvg.style.width = "100%";
+  graphSvg.style.height = "100%";
 
   const ns = "http://www.w3.org/2000/svg";
   const defs = document.createElementNS(ns, "defs");
@@ -1257,6 +1263,7 @@ function renderGraphExplorer(graph) {
     path.setAttribute("class", `graph-edge ${edge.type || "related"}`);
     path.setAttribute("marker-end", "url(#arrowHead)");
     path.setAttribute("data-label", edge.label || "");
+    path.style.opacity = edge.weight && edge.weight > 1 ? "0.48" : "0.26";
     edgeLayer.appendChild(path);
   }
 
@@ -1267,6 +1274,7 @@ function renderGraphExplorer(graph) {
     group.setAttribute("class", `graph-node ${node.type || "unknown"}`);
     group.setAttribute("transform", `translate(${p.x}, ${p.y})`);
     group.setAttribute("tabindex", "0");
+    group.appendChild(document.createElementNS(ns, "title")).textContent = `${node.label || node.id}${(node.properties?.aliases || []).length ? " aliases: " + node.properties.aliases.join(", ") : ""}`;
 
     const circle = document.createElementNS(ns, "circle");
     const radius = Math.max(8, Math.min(20, 8 + Number(node.weight || 1) * 1.4));
@@ -1295,7 +1303,42 @@ function renderGraphExplorer(graph) {
   }
 
   graphDetails.innerHTML = `<strong>Graph Explorer Beta</strong><p>${escapeHtml(graph.domain || "Domaine")} : cartographie grand format par colonnes. Clique sur un nœud pour afficher ses relations et propriétés. La zone du graphe a été élargie pour visualiser davantage de relations sans perdre la lisibilité.</p>`;
+  fitGraphToScreen();
   centerGraphStage();
+}
+
+function graphFilterState() {
+  const state = { findings: true, services: true, technologies: false, aliases: false, privateips: false, thirdparty: true, weak: false };
+  if (!graphFilters) return state;
+  graphFilters.querySelectorAll("input[data-graph-filter]").forEach(input => { state[input.dataset.graphFilter] = input.checked; });
+  return state;
+}
+
+function filterGraphForDisplay(graph) {
+  const state = graphFilterState();
+  const modeTypes = {
+    summary: new Set(["domain", "subdomain", "ip", "service", "finding"]),
+    dns: new Set(["domain", "subdomain", "ip"]),
+    services: new Set(["domain", "subdomain", "ip", "web", "service"]),
+    technologies: new Set(["domain", "subdomain", "technology"]),
+    risks: new Set(["domain", "subdomain", "finding", "cve", "service"]),
+    full: null,
+  };
+  const allowed = modeTypes[currentGraphMode] || modeTypes.summary;
+  const maxNodes = currentGraphMode === "full" ? 260 : 130;
+  const nodes = [];
+  for (const node of graph.nodes || []) {
+    const type = node.type || "unknown";
+    if (allowed && !allowed.has(type)) continue;
+    if (!state.findings && (type === "finding" || type === "cve")) continue;
+    if (!state.services && (type === "service" || type === "web")) continue;
+    if (!state.technologies && type === "technology") continue;
+    nodes.push(node);
+    if (nodes.length >= maxNodes) break;
+  }
+  const ids = new Set(nodes.map(n => n.id));
+  const edges = (graph.edges || []).filter(e => ids.has(e.source) && ids.has(e.target)).filter(e => state.weak || ["dns_resolution", "dns_a", "canonical_host", "exposes_service", "web_service", "has_finding", "uses_technology"].includes(e.type || "")).slice(0, currentGraphMode === "full" ? 520 : 260);
+  return { nodes, edges };
 }
 
 function computeGraphPositions(nodes, edges) {
@@ -1327,9 +1370,9 @@ function computeGraphPositions(nodes, edges) {
   }
 
   const maxColumn = Math.max(...[...levels.values()].map(v => v.length), 1);
-  const width = 1540;
-  const height = Math.max(900, Math.min(3600, 150 + maxColumn * 50));
-  const columns = [95, 390, 700, 1000, 1285, 1460];
+  const width = Math.max(980, Math.min(1700, 260 + levels.size * 260));
+  const height = Math.max(660, Math.min(3000, 150 + maxColumn * 46));
+  const columns = [95, 350, 610, 870, 1130, 1390];
   const positions = new Map();
 
   for (const [level, list] of levels.entries()) {
@@ -1360,6 +1403,13 @@ function computeGraphPositions(nodes, edges) {
   }
 
   return { positions, width, height };
+}
+
+function fitGraphToScreen() {
+  if (!graphSvg) return;
+  graphZoom = 1;
+  graphSvg.style.transform = "scale(1)";
+  graphSvg.style.transformOrigin = "0 0";
 }
 
 function centerGraphStage() {
@@ -1412,4 +1462,27 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (m) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
   }[m]));
+}
+
+
+if (graphModes) {
+  graphModes.addEventListener("click", (evt) => {
+    const btn = evt.target.closest("button[data-graph-mode]");
+    if (!btn) return;
+    currentGraphMode = btn.dataset.graphMode || "summary";
+    graphModes.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+    if (currentGraph) renderGraphExplorer(currentGraph);
+  });
+}
+if (graphFilters) graphFilters.addEventListener("change", () => currentGraph && renderGraphExplorer(currentGraph));
+if (fitGraphBtn) fitGraphBtn.addEventListener("click", fitGraphToScreen);
+if (fullGraphBtn) fullGraphBtn.addEventListener("click", () => graphStage?.requestFullscreen?.());
+if (graphStage) {
+  graphStage.addEventListener("wheel", (evt) => {
+    if (!evt.ctrlKey || !graphSvg) return;
+    evt.preventDefault();
+    graphZoom = Math.max(.45, Math.min(2.2, graphZoom + (evt.deltaY < 0 ? .08 : -.08)));
+    graphSvg.style.transform = `scale(${graphZoom})`;
+    graphSvg.style.transformOrigin = "0 0";
+  }, { passive: false });
 }

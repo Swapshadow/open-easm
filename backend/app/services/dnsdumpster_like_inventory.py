@@ -13,6 +13,7 @@ import dns.resolver
 import httpx
 
 from app.validators import is_public_ip
+from app.services.host_canonicalization import canonicalize_hosts
 
 UNKNOWN = "Non détecté"
 UNKNOWN_COUNTRY = "Unknown"
@@ -88,6 +89,10 @@ async def build_dnsdumpster_like_inventory(
         mx_records = await asyncio.gather(*(enrich_host(item, "mx") for item in mx_hosts[:MAX_HOSTS]))
         ns_records = await asyncio.gather(*(enrich_host(item, "ns") for item in ns_hosts[:MAX_HOSTS]))
 
+    canon = canonicalize_hosts(hosts, service_scan or {})
+    raw_hosts = hosts
+    hosts = canon["canonical_hosts"]
+
     system_locations = Counter(h.get("country") or UNKNOWN_COUNTRY for h in hosts if _public_ip(h.get("ip")))
     system_locations.update(h.get("country") or UNKNOWN_COUNTRY for h in mx_records + ns_records if _public_ip(h.get("ip")))
 
@@ -136,6 +141,13 @@ async def build_dnsdumpster_like_inventory(
         "hosting_networks": hosting_networks,
         "services_banners": dict(services_banners),
         "a_records": [_a_record_row(h) for h in hosts],
+        "canonical_hosts": hosts,
+        "canonicalization": canon.get("summary", {}),
+        "alias_map": canon.get("alias_map", {}),
+        "aliases_count": canon.get("aliases_count", 0),
+        "raw_hosts": raw_hosts,
+        "raw_subdomains": subdomains_result.get("subdomains", []) or [],
+        "raw_nmap_services": canon.get("raw_nmap_services", []),
         "mx_records": [_mx_record_row(h) for h in mx_records],
         "ns_records": [_ns_record_row(h) for h in ns_records],
         "txt_records": txt_records,
@@ -607,7 +619,7 @@ def _nmap_banner(p: dict) -> str | None:
 
 
 def _a_record_row(h: dict) -> dict:
-    return {k: h.get(k) for k in ["host", "ip", "asn", "network", "asn_name", "country", "open_services", "technologies", "revip_count", "sources", "guardrail"]}
+    return {k: h.get(k) for k in ["host", "canonical_host", "aliases", "dedupe_reason", "raw_hosts", "ip", "ips", "asn", "network", "asn_name", "country", "provider", "open_services", "services", "nmap_services", "http", "https", "tls", "technologies", "revip_count", "sources", "guardrail"]}
 
 
 def _mx_record_row(h: dict) -> dict:

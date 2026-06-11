@@ -122,7 +122,7 @@
             <div class="actions">
               <a id="reportLink" class="button-secondary" href="#" target="_blank">Excel</a>
               <a id="pdfLink" class="button-secondary gold" href="#" target="_blank">PDF</a>
-              <a id="htmlLink" class="button-secondary" href="#" download>HTML</a>
+              <a id="htmlLink" class="button-secondary" href="#" target="_blank">HTML</a>
               <a id="jsonLink" class="button-secondary" href="#" target="_blank">JSON</a>
             </div>
           </div>
@@ -240,15 +240,20 @@
           </div>
           <div class="actions compact-actions">
             <button id="reloadGraphBtn" class="secondary small" type="button">Charger le dernier audit</button>
-            <button id="fitGraphBtn" class="secondary small" type="button">Recentrer</button>
+            <button id="fitGraphBtn" class="secondary small" type="button">Fit to screen</button>
+            <button id="fullGraphBtn" class="secondary small" type="button">Plein écran</button>
           </div>
         </div>
-        <div id="graphStats" class="graph-stats"></div>
+        <div class="graph-controls"><div class="graph-modes" id="graphModes">
+          <button class="secondary small active" data-graph-mode="summary" type="button">Vue synthèse</button><button class="secondary small" data-graph-mode="dns" type="button">Vue DNS</button><button class="secondary small" data-graph-mode="services" type="button">Vue services</button><button class="secondary small" data-graph-mode="technologies" type="button">Vue technologies</button><button class="secondary small" data-graph-mode="risks" type="button">Vue risques</button><button class="secondary small" data-graph-mode="full" type="button">Vue complète</button>
+        </div><div class="graph-filters" id="graphFilters">
+          <label><input type="checkbox" data-graph-filter="aliases"> aliases</label><label><input type="checkbox" data-graph-filter="findings" checked> findings</label><label><input type="checkbox" data-graph-filter="technologies"> technologies</label><label><input type="checkbox" data-graph-filter="services" checked> services</label><label><input type="checkbox" data-graph-filter="privateips"> IP non publiques</label><label><input type="checkbox" data-graph-filter="thirdparty" checked> tiers MX/NS</label><label><input type="checkbox" data-graph-filter="weak"> arêtes faibles</label>
+        </div></div><div id="graphStats" class="graph-stats"></div>
         <div class="graph-layout">
           <div class="graph-stage">
             <svg id="graphSvg" viewBox="0 0 1540 900" role="img" aria-label="Graph Explorer OpenEASM"></svg>
           </div>
-          <aside id="graphDetails" class="graph-details">
+          <aside id="graphDetails" class="graph-details" open>
             <strong>Sélection</strong>
             <p>Clique sur un nœud pour afficher ses détails.</p>
           </aside>
@@ -276,13 +281,13 @@
     </section>
   </main>
 
-  <script src="/app.js?v=beta-reporting-html-fix-v3"></script>
+  <script src="/app.js?v=beta-26-6-canonical-graph-v1"></script>
   <script>
     (function () {
       function patchReportLinks() {
         document.querySelectorAll("a[href*='/api/reports/'][href$='/html']").forEach(function (link) {
-          link.setAttribute("download", "open_easm_report.html");
-          link.removeAttribute("target");
+          link.removeAttribute("download");
+          link.setAttribute("target", "_blank");
         });
 
         document.querySelectorAll("#reportsCenter .report-actions").forEach(function (actions) {
@@ -293,7 +298,7 @@
           htmlButton.className = "button-secondary small";
           htmlButton.href = source.href.replace(/\/(excel|pdf|json)(\?.*)?$/, "/html");
           htmlButton.textContent = "HTML";
-          htmlButton.setAttribute("download", "open_easm_report.html");
+          htmlButton.setAttribute("target", "_blank");
           var jsonButton = actions.querySelector("a[href$='/json']");
           actions.insertBefore(htmlButton, jsonButton || null);
         });

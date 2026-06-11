@@ -224,7 +224,7 @@ def _kpi_cards(audit: dict, styles):
         ("Score global", f"{score.get('score', 'N/A')} / {score.get('max_score', 1000)}", score.get("level", "N/A")),
         ("Risque exécutif", f"{risk.get('overall_score', 'N/A')} / {risk.get('max_score', 100)}", risk.get("risk_level", "N/A")),
         ("Surface publique", f"{audit.get('ip_inventory', {}).get('public_ip_count', 0)} IP", f"{audit.get('subdomains', {}).get('count', 0)} sous-domaines"),
-        ("Nmap", f"{scan.get('count_open_ports', 0)} ports", f"{scan.get('count_cves', 0)} CVE corrélées"),
+        ("Nmap", f"{len(scan.get('canonical_open_ports', scan.get('open_ports', [])) or [])} ports consolidés", f"{scan.get('count_cves', 0)} CVE corrélées"),
     ]
     row = [Paragraph(f"<b>{escape(str(label))}</b><br/><font size='15' color='#65000B'><b>{escape(str(value))}</b></font><br/><font color='#7B5500'>{escape(str(note))}</font>", styles["Body"]) for label, value, note in items]
     t = Table([row], colWidths=[6.25 * cm] * 4)
@@ -323,7 +323,7 @@ def _ip_table(audit: dict, styles, limit: int = 80):
 def _nmap_table(audit: dict, styles, limit: int = 80):
     scan = audit.get("service_scan", {}) or {}
     rows = [["Hôte", "Port", "Service", "Produit", "Version", "CVE", "Sévérité"]]
-    ports = scan.get("open_ports", []) or []
+    ports = scan.get("canonical_open_ports", scan.get("open_ports", [])) or []
     for port in ports[:limit]:
         cves = port.get("cves", []) or []
         if cves:
@@ -381,16 +381,16 @@ def _services_banners_table(dd: dict, styles):
 
 
 def _dnsdumpster_hosts_table(records: list, styles, limit: int = 70, mx: bool = False):
-    headers = (["Priority"] if mx else []) + ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "RevIP", "Sources"]
+    headers = (["Priority"] if mx else []) + ["Host", "Aliases", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "RevIP", "Sources"]
     rows = [headers]
     for h in (records or [])[:limit]:
-        base = [h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), _open_services_line(h), h.get("revip_count", 0), ", ".join(h.get("sources", []) or [])]
+        base = [h.get("host"), ", ".join(h.get("aliases", []) or []), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), _open_services_line(h), h.get("revip_count", 0), ", ".join(h.get("sources", []) or [])]
         rows.append(([h.get("priority")] if mx else []) + base)
     if len(records or []) > limit:
-        rows.append((["..."] if mx else []) + [f"{len(records)-limit} lignes supplémentaires", "Voir JSON/Excel", "", "", "", "", "", "", ""])
+        rows.append((["..."] if mx else []) + [f"{len(records)-limit} lignes supplémentaires", "Voir JSON/Excel", "", "", "", "", "", "", "", ""])
     if len(rows) == 1:
-        rows.append(([""] if mx else []) + ["Aucun", "Not found", "Non détecté", "Non détecté", "Non détecté", "Unknown", "Non détecté", "0", ""])
-    widths = ([1.8 * cm] if mx else []) + [4.2 * cm, 2.8 * cm, 2.4 * cm, 3.4 * cm, 5.2 * cm, 2.5 * cm, 7.4 * cm, 1.7 * cm, 2.7 * cm]
+        rows.append(([""] if mx else []) + ["Aucun", "", "Not found", "Non détecté", "Non détecté", "Non détecté", "Unknown", "Non détecté", "0", ""])
+    widths = ([1.5 * cm] if mx else []) + [3.5 * cm, 3.0 * cm, 2.4 * cm, 2.1 * cm, 3.0 * cm, 4.6 * cm, 2.2 * cm, 5.6 * cm, 1.4 * cm, 2.2 * cm]
     scale = 25.5 * cm / sum(widths)
     widths = [w * scale for w in widths]
     return _table(rows, widths, small=True, styles=styles)
