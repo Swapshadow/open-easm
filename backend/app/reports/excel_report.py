@@ -42,6 +42,7 @@ def generate_excel_report(audit: dict) -> str:
     ws.title = "Synthese Direction"
 
     _sheet_summary(ws, audit)
+    _sheet_dnsdumpster_like(wb, audit)
     _sheet_action_plan(wb, audit)
     _sheet_findings(wb, audit)
     _sheet_exposure(wb, audit)
@@ -135,6 +136,100 @@ def _sheet_summary(ws, audit: dict):
 
     _format(ws, freeze=None)
 
+
+
+def _sheet_dnsdumpster_like(wb, audit):
+    dd = audit.get("dnsdumpster_like", {}) or {}
+    summary = wb.create_sheet("DNSDumpster-like Summary")
+    summary_rows = [
+        ["Domain", dd.get("domain") or audit.get("domain")],
+        ["System Locations", len(dd.get("system_locations", {}) or {})],
+        ["Hosting / Networks", len(dd.get("hosting_networks", []) or [])],
+        ["Services / Banners", len(dd.get("services_banners", {}) or {})],
+        ["A Records enrichis", len(dd.get("a_records", []) or [])],
+        ["MX Records enrichis", len(dd.get("mx_records", []) or [])],
+        ["NS Records enrichis", len(dd.get("ns_records", []) or [])],
+        ["TXT Records", len(dd.get("txt_records", []) or [])],
+        ["Note", "Nmap est une source complémentaire ; HTTP/HTTPS/TLS sont intégrés même si Nmap est vide."],
+    ]
+    _table_sheet(summary, "DNSDUMPSTER-LIKE SUMMARY", ["Indicateur", "Valeur"], summary_rows)
+
+    ws = wb.create_sheet("System Locations")
+    rows = [[country, count] for country, count in (dd.get("system_locations", {}) or {}).items()]
+    _table_sheet(ws, "SYSTEM LOCATIONS", ["Country", "Count"], rows or [["Unknown", 0]])
+
+    ws = wb.create_sheet("Hosting Networks")
+    rows = [[h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("count")] for h in dd.get("hosting_networks", [])]
+    _table_sheet(ws, "HOSTING / NETWORKS", ["ASN", "Network", "ASN Name", "Country", "Hosts"], rows)
+
+    ws = wb.create_sheet("Services Banners")
+    rows = [[banner, count] for banner, count in (dd.get("services_banners", {}) or {}).items()]
+    _table_sheet(ws, "SERVICES / BANNERS", ["Banner", "Count"], rows)
+
+    for title, key, headers, fn in [
+        ("A Records", "a_records", _host_headers(), _host_row),
+        ("MX Records", "mx_records", ["Priority"] + _host_headers(), lambda h: [h.get("priority")] + _host_row(h)),
+        ("NS Records", "ns_records", _host_headers(), _host_row),
+        ("Host Inventory", "hosts", _host_headers(), _host_row),
+    ]:
+        ws = wb.create_sheet(title)
+        _table_sheet(ws, title.upper(), headers, [fn(h) for h in dd.get(key, [])])
+
+    ws = wb.create_sheet("TXT Records")
+    rows = []
+    for item in dd.get("txt_records", []) or []:
+        spf = item.get("spf") or {}
+        rows.append([item.get("type"), item.get("value"), "\n".join(spf.get("includes", [])), "\n".join(spf.get("ip4", [])), "\n".join(spf.get("ip6", [])), "\n".join(spf.get("providers", [])), ", ".join(item.get("sources", []))])
+    _table_sheet(ws, "TXT RECORDS", ["Type", "Value", "SPF Includes", "SPF ip4", "SPF ip6", "Providers", "Sources"], rows)
+
+
+def _host_headers():
+    return ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Provider", "Open Services", "HTTP Status", "HTTPS Status", "Final URL", "Title", "Server Banner", "TLS CN", "TLS SAN", "TLS Issuer", "TLS Expiration", "Technologies", "Nmap Services", "RevIP", "Sources"]
+
+
+def _host_row(h):
+    http = h.get("http") or {}
+    https = h.get("https") or {}
+    tls = h.get("tls") or {}
+    services = _services_text(h.get("open_services", [])) or "Non détecté"
+    server_banner = "; ".join(dict.fromkeys([s.get("banner") for s in h.get("open_services", []) if s.get("banner")]))
+    title = https.get("title") or http.get("title") or next((s.get("title") for s in h.get("open_services", []) if s.get("title") and s.get("title") != "Non détecté"), "Non détecté")
+    return [
+        h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("provider"),
+        services, http.get("status_code") or "Non détecté", https.get("status_code") or "Non détecté", https.get("final_url") or http.get("final_url") or "Non détecté", title,
+        server_banner or "Non détecté", tls.get("cn") or "Non détecté", "\n".join(tls.get("san", []) or []), tls.get("issuer") or "Non détecté", tls.get("expires_at") or "Non détecté",
+        _tech_text(h.get("technologies", [])) or "Non détecté", _nmap_text(h.get("nmap_services", [])) or "Non détecté par Nmap", h.get("revip_count", 0), ", ".join(h.get("sources", [])),
+    ]
+
+
+def _services_text(services):
+    parts = []
+    for s in services or []:
+        seg = f"{s.get('scheme')}: {s.get('banner') or s.get('service') or 'unknown server'}"
+        if s.get("title") and s.get("title") != "Non détecté":
+            seg += f"; title: {s.get('title')}"
+        parts.append(seg)
+    return "\n".join(parts)
+
+
+def _tech_text(technologies):
+    out = []
+    for t in technologies or []:
+        name = t.get("name") or ""
+        if t.get("version"):
+            name += f":{t.get('version')}"
+        if t.get("note"):
+            name += f" ({t.get('note')})"
+        out.append(name)
+    return "\n".join(dict.fromkeys(out))
+
+
+def _nmap_text(services):
+    out = []
+    for s in services or []:
+        version = s.get("version") or "Version non exposée"
+        out.append(f"{s.get('port')}/{s.get('protocol', 'tcp')} {s.get('name') or s.get('service')} {s.get('product') or ''} {version}".strip())
+    return "\n".join(out)
 
 def _sheet_action_plan(wb, audit):
     ws = wb.create_sheet("Plan Action")
@@ -259,7 +354,7 @@ def _sheet_limits(wb, audit):
 
 
 def _sheet_raw(wb, audit):
-    ws = wb.create_sheet("Resume JSON")
+    ws = wb.create_sheet("Raw JSON Summary")
     rows = [
         ["id", audit.get("id")],
         ["domain", audit.get("domain")],
@@ -267,6 +362,7 @@ def _sheet_raw(wb, audit):
         ["mode", audit.get("mode")],
         ["score", json.dumps(audit.get("score", {}), ensure_ascii=False, default=str)],
         ["executive_risk", json.dumps(audit.get("executive_risk", {}), ensure_ascii=False, default=str)[:32000]],
+        ["dnsdumpster_like", json.dumps(audit.get("dnsdumpster_like", {}), ensure_ascii=False, default=str)[:32000]],
     ]
     _table_sheet(ws, "RÉSUMÉ JSON", ["Clé", "Valeur"], rows)
 

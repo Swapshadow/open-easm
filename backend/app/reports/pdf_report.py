@@ -96,12 +96,7 @@ class SeverityLegend(Flowable):
 
 
 def generate_pdf_report(audit: dict) -> str:
-    """Generate the professional OpenEASM PDF report.
-
-    Beta fix: large subsections such as subdomains and IP inventory are not nested
-    inside another table anymore. ReportLab cannot split a large nested table across
-    pages, which caused the PDF export to fail when many subdomains were present.
-    """
+    """Generate a DNSDumpster-like PDF where Nmap is an appendix."""
     filename = f"open_easm_beta_{audit['domain'].replace('.', '_')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
     path = REPORT_DIR / filename
 
@@ -114,82 +109,66 @@ def generate_pdf_report(audit: dict) -> str:
         bottomMargin=1.05 * cm,
         title=f"OpenEASM Beta - {audit['domain']}",
         author="OpenEASM",
-        subject="External Attack Surface Management defensive audit",
+        subject="DNSDumpster-like External Attack Surface Management defensive audit",
     )
 
     styles = _styles()
     story = []
+    dd = audit.get("dnsdumpster_like", {}) or {}
     risk = audit.get("executive_risk", {}) or {}
-    score = audit.get("score", {}) or {}
     scan = audit.get("service_scan", {}) or {}
-    graph = audit.get("attack_graph", {}) or {}
 
     story.append(_cover_block(audit, styles))
-    story.append(Spacer(1, 0.30 * cm))
+    story.append(Spacer(1, 0.20 * cm))
     story.append(_kpi_cards(audit, styles))
     story.append(Spacer(1, 0.18 * cm))
-    story.append(_score_panel(audit, styles))
-    story.append(Spacer(1, 0.25 * cm))
-
-    story.append(Paragraph("Synthèse exécutive", styles["Section"]))
+    story.append(Paragraph("Page de synthèse", styles["Section"]))
     story.append(_callout(str(risk.get("board_summary") or _conclusion(audit)), styles, tone="neutral"))
-    story.append(Spacer(1, 0.20 * cm))
-    story.append(Paragraph("Plan d'action priorisé", styles["Section"]))
-    story.append(_actions_table(audit, styles, limit=12))
+    story.append(Spacer(1, 0.14 * cm))
+    story.append(_callout("Nmap est une source complémentaire. Les services HTTP/HTTPS peuvent être détectés par fingerprint web même lorsque Nmap ne remonte pas de service.", styles, tone="safe"))
+    story.append(Spacer(1, 0.18 * cm))
+    story.append(_dnsdumpster_summary_table(dd, styles))
 
     story.append(PageBreak())
-    story.append(Paragraph("Vue de risque par pilier", styles["Section"]))
-    story.append(_risk_overview(risk, styles))
+    story.append(Paragraph("System Locations", styles["Section"]))
+    story.append(_system_locations_table(dd, styles))
     story.append(Spacer(1, 0.22 * cm))
-    story.append(SeverityLegend(score.get("by_severity", {})))
-    story.append(Spacer(1, 0.28 * cm))
-    story.append(Paragraph("Constats prioritaires localisés", styles["Section"]))
-    story.append(_findings_table(audit, styles, limit=26))
+    story.append(Paragraph("Hosting / Networks", styles["Section"]))
+    story.append(_hosting_networks_table(dd, styles))
+    story.append(Spacer(1, 0.22 * cm))
+    story.append(Paragraph("Services / Banners", styles["Section"]))
+    story.append(_services_banners_table(dd, styles))
 
     story.append(PageBreak())
-    story.append(Paragraph("Cartographie de l'exposition", styles["Section"]))
-    graph_rows = [
-        ["Indicateur", "Valeur", "Lecture"],
-        ["Noeuds Graph Explorer", str((graph.get("metrics") or {}).get("nodes", 0)), "Domaines, sous-domaines, IP, services, CVE et constats"],
-        ["Relations", str((graph.get("metrics") or {}).get("edges", 0)), "Liens DNS, exposition web, ports, CVE et constats"],
-        ["IP publiques", str(audit.get("ip_inventory", {}).get("public_ip_count", 0)), "Surface réseau publique observée"],
-        ["Sous-domaines", str(audit.get("subdomains", {}).get("count", 0)), "Découverte passive"],
-        ["Ports Nmap", str(scan.get("count_open_ports", 0)), "Service/version/port, non exploitant"],
-    ]
-    story.append(_table(graph_rows, [5.2 * cm, 3.7 * cm, 16.6 * cm], styles=styles))
-    story.append(Spacer(1, 0.25 * cm))
-
-    # Important: do not nest the subdomain and IP tables in a single parent table.
-    # Nested tables are treated as one unbreakable flowable by ReportLab. If the
-    # list is long, the PDF generation fails with "Flowable ... too large".
-    story.append(Paragraph("Sous-domaines publics", styles["SectionSmall"]))
-    story.append(_subdomains_table(audit, styles, limit=80))
-    story.append(Spacer(1, 0.25 * cm))
-    story.append(Paragraph("Inventaire IP", styles["SectionSmall"]))
-    story.append(_ip_table(audit, styles, limit=80))
+    story.append(Paragraph("A Records / Subdomains from dataset", styles["Section"]))
+    story.append(_dnsdumpster_hosts_table(dd.get("a_records", []), styles, limit=70))
 
     story.append(PageBreak())
-    story.append(Paragraph("Nmap service / version / CVE", styles["Section"]))
-    story.append(_callout(
-        "Contrôle non exploitant : identification des ports ouverts, services et versions. La corrélation CVE est effectuée côté OpenEASM à partir des versions détectées. Aucun exploit, bruteforce, DoS ou script intrusif n'est exécuté.",
-        styles,
-        tone="safe",
-    ))
+    story.append(Paragraph("MX Records", styles["Section"]))
+    story.append(_dnsdumpster_hosts_table(dd.get("mx_records", []), styles, limit=60, mx=True))
+    story.append(Spacer(1, 0.22 * cm))
+    story.append(Paragraph("NS Records", styles["Section"]))
+    story.append(_dnsdumpster_hosts_table(dd.get("ns_records", []), styles, limit=60))
+    story.append(Spacer(1, 0.22 * cm))
+    story.append(Paragraph("TXT Records", styles["Section"]))
+    story.append(_txt_records_table(dd, styles))
+
+    story.append(PageBreak())
+    story.append(Paragraph("Host Inventory détaillé", styles["Section"]))
+    story.append(_host_inventory_detail(dd, styles, limit=40))
+
+    story.append(PageBreak())
+    story.append(Paragraph("Annexe — Nmap service/version", styles["Section"]))
+    story.append(_callout(str(scan.get("note") or "Nmap service/version/port uniquement, sans exploitation."), styles, tone="safe"))
     story.append(Spacer(1, 0.16 * cm))
     story.append(_nmap_table(audit, styles, limit=80))
 
     story.append(PageBreak())
-    story.append(Paragraph("Annexes : portée, limites et responsabilité", styles["Section"]))
-    limits = [
-        ["Point", "Détail"],
-        ["Nature de l'audit", "Audit public défensif d'exposition externe. Les résultats sont issus d'informations visibles publiquement."],
-        ["Nmap", str(scan.get("note", "Service/version/port uniquement, sans exploitation."))],
-        ["CVE", "Une CVE n'est affichée que si la version détectée permet une corrélation raisonnable. Une version masquée ne doit pas générer de faux positif."],
-        ["Versions masquées", "OpenEASM indique 'version non exposée' et recommande une vérification interne via inventaire serveur, EDR, gestion de parc ou paquet système."],
-        ["Backports", "Les distributions Linux peuvent intégrer des correctifs de sécurité sans changer le numéro de version amont."],
-        ["Responsabilité", "L'utilisateur doit disposer d'un droit, d'une autorisation explicite ou d'un motif légitime de sécurité informatique."],
-    ]
-    story.append(_table(limits, [5.2 * cm, 20.3 * cm], styles=styles))
+    story.append(Paragraph("Annexe — CVE", styles["Section"]))
+    story.append(_cve_table(audit, styles, limit=80))
+    story.append(Spacer(1, 0.22 * cm))
+    story.append(Paragraph("Limites et sources", styles["Section"]))
+    story.append(_limits_sources_table(audit, dd, styles))
 
     doc.build(story, onFirstPage=_decorate_page, onLaterPages=_decorate_page)
     return filename
@@ -358,6 +337,149 @@ def _nmap_table(audit: dict, styles, limit: int = 80):
         rows.append(["Aucun", "", "", "", "", "", scan.get("note", "Aucun port ouvert détecté ou Nmap indisponible.")])
     return _table(rows, [4.4 * cm, 2.2 * cm, 2.9 * cm, 4.2 * cm, 3.5 * cm, 3.4 * cm, 2.5 * cm], small=True, styles=styles)
 
+
+
+def _dnsdumpster_summary_table(dd: dict, styles):
+    rows = [["Section", "Volume"]]
+    rows.extend([
+        ["System Locations", str(len(dd.get("system_locations", {}) or {}))],
+        ["Hosting / Networks", str(len(dd.get("hosting_networks", []) or []))],
+        ["Services / Banners", str(len(dd.get("services_banners", {}) or {}))],
+        ["A Records enrichis", str(len(dd.get("a_records", []) or []))],
+        ["MX Records enrichis", str(len(dd.get("mx_records", []) or []))],
+        ["NS Records enrichis", str(len(dd.get("ns_records", []) or []))],
+        ["TXT Records", str(len(dd.get("txt_records", []) or []))],
+    ])
+    return _table(rows, [15.0 * cm, 5.0 * cm], styles=styles)
+
+
+def _system_locations_table(dd: dict, styles):
+    rows = [["Country", "Count"]]
+    for country, count in (dd.get("system_locations", {}) or {}).items():
+        rows.append([country, str(count)])
+    if len(rows) == 1:
+        rows.append(["Unknown", "0"])
+    return _table(rows, [16.0 * cm, 4.0 * cm], styles=styles)
+
+
+def _hosting_networks_table(dd: dict, styles):
+    rows = [["ASN", "Network", "ASN Name", "Country", "Hosts"]]
+    for h in dd.get("hosting_networks", []) or []:
+        rows.append([h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("count")])
+    if len(rows) == 1:
+        rows.append(["Non détecté", "Non détecté", "Non détecté", "Unknown", "0"])
+    return _table(rows, [3.0 * cm, 4.2 * cm, 11.8 * cm, 3.0 * cm, 2.0 * cm], small=True, styles=styles)
+
+
+def _services_banners_table(dd: dict, styles):
+    rows = [["Banner", "Count"]]
+    for banner, count in (dd.get("services_banners", {}) or {}).items():
+        rows.append([banner, str(count)])
+    if len(rows) == 1:
+        rows.append(["Non détecté", "0"])
+    return _table(rows, [17.0 * cm, 3.0 * cm], styles=styles)
+
+
+def _dnsdumpster_hosts_table(records: list, styles, limit: int = 70, mx: bool = False):
+    headers = (["Priority"] if mx else []) + ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "RevIP", "Sources"]
+    rows = [headers]
+    for h in (records or [])[:limit]:
+        base = [h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), _open_services_line(h), h.get("revip_count", 0), ", ".join(h.get("sources", []) or [])]
+        rows.append(([h.get("priority")] if mx else []) + base)
+    if len(records or []) > limit:
+        rows.append((["..."] if mx else []) + [f"{len(records)-limit} lignes supplémentaires", "Voir JSON/Excel", "", "", "", "", "", "", ""])
+    if len(rows) == 1:
+        rows.append(([""] if mx else []) + ["Aucun", "Not found", "Non détecté", "Non détecté", "Non détecté", "Unknown", "Non détecté", "0", ""])
+    widths = ([1.8 * cm] if mx else []) + [4.2 * cm, 2.8 * cm, 2.4 * cm, 3.4 * cm, 5.2 * cm, 2.5 * cm, 7.4 * cm, 1.7 * cm, 2.7 * cm]
+    scale = 25.5 * cm / sum(widths)
+    widths = [w * scale for w in widths]
+    return _table(rows, widths, small=True, styles=styles)
+
+
+def _txt_records_table(dd: dict, styles):
+    rows = [["Type", "Value", "SPF providers", "SPF includes/ip"]]
+    for item in dd.get("txt_records", []) or []:
+        spf = item.get("spf") or {}
+        rows.append([item.get("type"), item.get("value"), ", ".join(spf.get("providers", []) or []), "; ".join((spf.get("includes", []) or []) + (spf.get("ip4", []) or []) + (spf.get("ip6", []) or []))])
+    if len(rows) == 1:
+        rows.append(["TXT", "Non détecté", "", ""])
+    return _table(rows, [2.1 * cm, 14.4 * cm, 4.0 * cm, 5.0 * cm], small=True, styles=styles)
+
+
+def _host_inventory_detail(dd: dict, styles, limit: int = 40):
+    rows = [["Host", "IP / ASN", "HTTP/HTTPS/TLS", "Technologies", "Nmap"]]
+    for h in (dd.get("hosts", []) or [])[:limit]:
+        tls = h.get("tls") or {}
+        tls_txt = f"cn: {tls.get('cn', 'Non détecté')}; issuer: {tls.get('issuer', 'Non détecté')}; exp: {tls.get('expires_at', 'Non détecté')}"
+        rows.append([
+            h.get("host"),
+            f"{h.get('ip')} | {h.get('asn')} | {h.get('network')} | {h.get('country')}",
+            f"{_open_services_line(h)}; {tls_txt}",
+            _tech_line(h),
+            _nmap_line(h) or "Non détecté par Nmap",
+        ])
+    if len(rows) == 1:
+        rows.append(["Aucun", "", "", "", ""])
+    return _table(rows, [4.3 * cm, 5.3 * cm, 7.4 * cm, 5.0 * cm, 3.5 * cm], small=True, styles=styles)
+
+
+def _cve_table(audit: dict, styles, limit: int = 80):
+    cves = (audit.get("service_scan", {}) or {}).get("cves", []) or []
+    rows = [["CVE", "Host", "Service", "Version", "Sévérité", "Preuve"]]
+    for c in cves[:limit]:
+        rows.append([c.get("cve"), c.get("hostname") or c.get("host"), c.get("service") or c.get("product"), c.get("version") or "Version non exposée", c.get("severity"), c.get("evidence")])
+    if len(rows) == 1:
+        rows.append(["Aucune", "", "", "", "", "Aucune CVE corrélée par version exposée."])
+    return _table(rows, [3.0 * cm, 4.0 * cm, 4.0 * cm, 3.5 * cm, 2.5 * cm, 8.5 * cm], small=True, styles=styles)
+
+
+def _limits_sources_table(audit: dict, dd: dict, styles):
+    policy = dd.get("policy", {}) or {}
+    rows = [["Point", "Détail"]]
+    rows.extend([
+        ["Sources", "DNS, sous-domaines passifs/fallback, ASN Team Cymru, HTTP/HTTPS fingerprint, TLS certificate, Nmap en annexe."],
+        ["HTTP", f"User-Agent: {policy.get('user_agent', 'OpenEASM-Beta-26.6 Defensive Audit')} ; timeout {policy.get('http_timeout_seconds', 8)} s ; concurrence {policy.get('concurrency', 10)}."],
+        ["Garde-fous", "Aucun exploit, aucun bruteforce, aucun DoS, aucun NSE intrusif ; cibles privées/réservées ou mixtes bloquées."],
+        ["Nmap", "Source complémentaire seulement. Une absence Nmap ne masque pas un service HTTP/HTTPS observé."],
+        ["Données passives", "Optionnelles via clés API ; aucune donnée inventée si non configuré."],
+        ["Non détecté", "Les informations absentes restent Non détecté / Version non exposée / Non détecté par Nmap."],
+    ])
+    return _table(rows, [5.0 * cm, 20.5 * cm], styles=styles)
+
+
+def _open_services_line(h: dict) -> str:
+    parts = []
+    for svc in h.get("open_services", []) or []:
+        seg = f"{svc.get('scheme')}: {svc.get('banner') or svc.get('service') or 'unknown server'}"
+        if svc.get("title") and svc.get("title") != "Non détecté":
+            seg += f"; title: {svc.get('title')}"
+        parts.append(seg)
+    tls = h.get("tls") or {}
+    if tls.get("cn") and tls.get("cn") != "Non détecté":
+        parts.append(f"cn: {tls.get('cn')}")
+    tech = _tech_line(h)
+    if tech and tech != "Non détecté":
+        parts.append(f"tech: {tech}")
+    return "; ".join(parts) or ("Bloqué par garde-fou" if h.get("guardrail") else "Non détecté")
+
+
+def _tech_line(h: dict) -> str:
+    out = []
+    for t in h.get("technologies", []) or []:
+        name = t.get("name") or ""
+        if t.get("version"):
+            name += f":{t.get('version')}"
+        if t.get("note"):
+            name += f" ({t.get('note')})"
+        out.append(name)
+    return ", ".join(dict.fromkeys(out)) or "Non détecté"
+
+
+def _nmap_line(h: dict) -> str:
+    parts = []
+    for s in h.get("nmap_services", []) or []:
+        parts.append(f"{s.get('port')}/{s.get('protocol', 'tcp')} {s.get('name') or s.get('service') or ''} {s.get('product') or ''} {s.get('version') or 'Version non exposée'}".strip())
+    return "; ".join(parts)
 
 def _callout(text: str, styles, tone: str = "neutral"):
     bg = colors.HexColor("#ECFFF5") if tone == "safe" else CARD_ALT

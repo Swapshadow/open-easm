@@ -11,7 +11,7 @@ from typing import Any
 
 from app.services.network_guard import resolve_ips
 
-TOP_PORTS = os.getenv("OPENEASM_NMAP_TOP_PORTS", "")
+TOP_PORTS = os.getenv("OPENEASM_NMAP_TOP_PORTS", "1000")
 HOST_TIMEOUT = os.getenv("OPENEASM_NMAP_HOST_TIMEOUT", "120s")
 PROCESS_TIMEOUT = int(os.getenv("OPENEASM_NMAP_PROCESS_TIMEOUT", "150"))
 

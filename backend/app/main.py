@@ -35,6 +35,7 @@ from app.services.domain_verification import start_verification, check_verificat
 from app.services.diagnostics import build_system_diagnostics, test_export_dependencies
 from app.services.executive_risk import build_executive_risk
 from app.services.nmap_audit import audit_service_versions
+from app.services.dnsdumpster_like_inventory import build_dnsdumpster_like_inventory
 from app.services.legal_terms import legal_payload, create_acceptance, validate_acceptance
 from app.services.attack_graph import build_attack_graph
 
@@ -155,6 +156,14 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     passive_cves = detect_passive_cves(web_result)
     cti_result = audit_cti(ip_inventory, domain)
     service_scan = await asyncio.to_thread(audit_service_versions, domain, ip_inventory)
+    dnsdumpster_like = await build_dnsdumpster_like_inventory(
+        domain,
+        dns_result,
+        mail_result,
+        subdomains_result,
+        ip_inventory,
+        service_scan,
+    )
 
     raw_findings = collect_findings(
         dns_result,
@@ -193,6 +202,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "ip_inventory": ip_inventory,
         "passive_cves": passive_cves,
         "service_scan": service_scan,
+        "dnsdumpster_like": dnsdumpster_like,
         "cti": cti_result,
         "patching_sla": patching_sla,
         "executive_risk": executive_risk,
@@ -274,6 +284,17 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "count": passive_cves.get("count"),
             "items": passive_cves.get("items", [])[:30],
             "note": passive_cves.get("note"),
+        },
+        "dnsdumpster_like": {
+            "system_locations": dnsdumpster_like.get("system_locations", {}),
+            "hosting_networks": dnsdumpster_like.get("hosting_networks", [])[:50],
+            "services_banners": dnsdumpster_like.get("services_banners", {}),
+            "a_records": dnsdumpster_like.get("a_records", [])[:80],
+            "mx_records": dnsdumpster_like.get("mx_records", [])[:50],
+            "ns_records": dnsdumpster_like.get("ns_records", [])[:50],
+            "txt_records": dnsdumpster_like.get("txt_records", [])[:80],
+            "hosts": dnsdumpster_like.get("hosts", [])[:80],
+            "policy": dnsdumpster_like.get("policy", {}),
         },
         "service_scan": {
             "enabled": service_scan.get("enabled"),

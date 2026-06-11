@@ -370,9 +370,142 @@ def _render_graph(audit: dict) -> str:
     )
 
 
+
+def _render_dnsdumpster_like(audit: dict) -> str:
+    dd = audit.get("dnsdumpster_like") or {}
+    note = '<p class="notice"><strong>Nmap est une source complémentaire.</strong> Les services HTTP/HTTPS peuvent être détectés par fingerprint web même lorsque Nmap ne remonte pas de service.</p>'
+    metrics = ('<div class="metric-grid">' + _metric("System Locations", len(dd.get("system_locations", {}) or {})) + _metric("Hosting / Networks", len(dd.get("hosting_networks", []) or [])) + _metric("Services / Banners", len(dd.get("services_banners", {}) or {})) + _metric("A Records enrichis", len(dd.get("a_records", []) or [])) + _metric("MX Records enrichis", len(dd.get("mx_records", []) or [])) + _metric("NS Records enrichis", len(dd.get("ns_records", []) or [])) + '</div>')
+    return note + metrics
+
+
+def _render_system_locations(audit: dict) -> str:
+    rows = [[country, count] for country, count in (safe_get(audit, "dnsdumpster_like.system_locations", {}) or {}).items()]
+    return render_table(["Country", "Count"], rows or [["Unknown", 0]])
+
+
+def _render_hosting_networks(audit: dict) -> str:
+    rows = [[h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("count")] for h in safe_get(audit, "dnsdumpster_like.hosting_networks", []) or []]
+    return render_table(["ASN", "Network", "ASN Name", "Country", "Hosts"], rows)
+
+
+def _render_services_banners(audit: dict) -> str:
+    rows = [[banner, count] for banner, count in (safe_get(audit, "dnsdumpster_like.services_banners", {}) or {}).items()]
+    return render_table(["Banner", "Count"], rows)
+
+
+def _render_a_records_filterable(audit: dict) -> str:
+    records = safe_get(audit, "dnsdumpster_like.a_records", []) or []
+    controls = """<div class="filters">
+<input id="hostSearch" placeholder="Recherche host..." oninput="filterDnsdumpsterTable()">
+<input id="asnFilter" placeholder="Filtre ASN..." oninput="filterDnsdumpsterTable()">
+<input id="countryFilter" placeholder="Filtre pays..." oninput="filterDnsdumpsterTable()">
+<input id="techFilter" placeholder="Filtre technologie..." oninput="filterDnsdumpsterTable()">
+<input id="serviceFilter" placeholder="Filtre service/banner..." oninput="filterDnsdumpsterTable()">
+<label><input id="webNoNmap" type="checkbox" onchange="filterDnsdumpsterTable()"> HTTP/HTTPS détecté mais Nmap vide</label>
+<label><input id="guardOnly" type="checkbox" onchange="filterDnsdumpsterTable()"> Bloqué par garde-fou</label>
+</div>"""
+    headers = ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "RevIP", "Sources"]
+    rows = []
+    for h in records:
+        tech = _tech_text(h)
+        services = _open_services_html(h)
+        badges = _host_badges(h)
+        detail = _host_detail_html(h)
+        attrs = {"host": h.get("host", ""), "asn": h.get("asn", ""), "country": h.get("country", ""), "tech": tech, "service": _plain_services(h), "webnonmap": str(bool(h.get("open_services") and not h.get("nmap_services"))).lower(), "guard": str(bool(h.get("guardrail"))).lower()}
+        attr_str = " ".join(f'data-{k}="{esc(v).lower()}"' for k, v in attrs.items())
+        host_cell = SafeHtml(f'<details><summary>{esc(h.get("host"))} {badges}</summary>{detail}</details>')
+        rows.append(SafeHtml(f'<tr {attr_str} class="dnsdumpster-row"><td>{host_cell}</td><td>{esc(h.get("ip"))}</td><td>{esc(h.get("asn"))}</td><td>{esc(h.get("network"))}</td><td>{esc(h.get("asn_name"))}</td><td>{esc(h.get("country"))}</td><td>{services}</td><td>{esc(h.get("revip_count", 0))}</td><td>{esc(", ".join(h.get("sources", []) or []))}</td></tr>'))
+    if not rows:
+        return controls + '<p class="notice">Aucun A record enrichi disponible.</p>'
+    head = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    return controls + f'<div class="table-scroll"><table id="dnsdumpsterTable" class="table"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+
+
+def _render_mx_records(audit: dict) -> str:
+    rows = []
+    for h in safe_get(audit, "dnsdumpster_like.mx_records", []) or []:
+        rows.append([h.get("priority"), h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), SafeHtml(_open_services_html(h)), _tech_text(h), _join(h.get("sources", []))])
+    return render_table(["Priority", "Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "Technologies", "Sources"], rows)
+
+
+def _render_ns_records(audit: dict) -> str:
+    rows = []
+    for h in safe_get(audit, "dnsdumpster_like.ns_records", []) or []:
+        rows.append([h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), SafeHtml(_open_services_html(h)), _join(h.get("sources", []))])
+    return render_table(["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "Sources"], rows)
+
+
+def _render_txt_records(audit: dict) -> str:
+    rows = []
+    for item in safe_get(audit, "dnsdumpster_like.txt_records", []) or []:
+        spf = item.get("spf") or {}
+        rows.append([item.get("type"), SafeHtml(f'<div class="code">{esc(item.get("value"))}</div>'), _join(spf.get("providers", []), 10), _join(spf.get("includes", []), 15), _join((spf.get("ip4", []) or []) + (spf.get("ip6", []) or []), 20)])
+    return render_table(["Type", "Value", "SPF providers", "SPF includes", "SPF IPs"], rows)
+
+
+def _render_host_inventory_detail(audit: dict) -> str:
+    cards = []
+    for h in safe_get(audit, "dnsdumpster_like.hosts", []) or []:
+        cards.append(f"<details class=\"host-card\"><summary>{esc(h.get('host'))} - {esc(h.get('ip'))} {_host_badges(h)}</summary>{_host_detail_html(h)}</details>")
+    return "".join(cards) or '<p class="notice">Aucun host inventory détaillé disponible.</p>'
+
+
+def _host_badges(h: dict) -> str:
+    badges = []
+    if any(s.get("scheme") == "http" for s in h.get("open_services", []) or []): badges.append("HTTP")
+    if any(s.get("scheme") == "https" for s in h.get("open_services", []) or []): badges.append("HTTPS")
+    if (h.get("tls") or {}).get("cn") and (h.get("tls") or {}).get("cn") != "Non détecté": badges.append("TLS")
+    if h.get("nmap_services"): badges.append("Nmap")
+    if h.get("asn") and h.get("asn") != "Non détecté": badges.append("ASN")
+    if h.get("technologies"): badges.append("Tech")
+    if h.get("guardrail"): badges.append("Bloqué par garde-fou")
+    if not h.get("open_services"): badges.append("Non détecté")
+    return " ".join(f'<span class="badge mini">{esc(b)}</span>' for b in badges)
+
+
+def _open_services_html(h: dict) -> str:
+    services = h.get("open_services", []) or []
+    if not services:
+        return '<span class="badge mini">Bloqué par garde-fou</span>' if h.get("guardrail") else '<span class="badge mini">Non détecté</span>'
+    parts = []
+    for svc in services:
+        text = f"{svc.get('scheme')}: {svc.get('banner') or svc.get('service') or 'unknown server'}"
+        if svc.get("title") and svc.get("title") != "Non détecté": text += f"; title: {svc.get('title')}"
+        parts.append(esc(text))
+    tls = h.get("tls") or {}
+    if tls.get("cn") and tls.get("cn") != "Non détecté": parts.append(f"cn: {esc(tls.get('cn'))}")
+    tech = _tech_text(h)
+    if tech: parts.append(f"tech: {esc(tech)}")
+    return "<br>".join(parts)
+
+
+def _plain_services(h: dict) -> str:
+    return " ".join([str(s.get("banner") or s.get("service") or "") for s in h.get("open_services", []) or []])
+
+
+def _tech_text(h: dict) -> str:
+    out = []
+    for t in h.get("technologies", []) or []:
+        name = t.get("name") or ""
+        if t.get("version"): name += f":{t.get('version')}"
+        if t.get("note"): name += f" ({t.get('note')})"
+        out.append(name)
+    return ", ".join(dict.fromkeys(out))
+
+
+def _host_detail_html(h: dict) -> str:
+    tls = h.get("tls") or {}
+    guard = h.get("guardrail") or {}
+    data = [["DNS", h.get("host")], ["IP", h.get("ip")], ["ASN", h.get("asn")], ["Network", h.get("network")], ["ASN Name", h.get("asn_name")], ["Country", h.get("country")], ["Provider", h.get("provider")], ["HTTP", h.get("http", {}).get("status_code") or "Non détecté"], ["HTTPS", h.get("https", {}).get("status_code") or "Non détecté"], ["TLS", f"CN={tls.get('cn', 'Non détecté')} SAN={', '.join(tls.get('san', []) or [])} issuer={tls.get('issuer', 'Non détecté')} exp={tls.get('expires_at', 'Non détecté')}"], ["Technologies", _tech_text(h) or "Non détecté"], ["Nmap", _nmap_services_text(h) or "Non détecté par Nmap"], ["Sources", ", ".join(h.get("sources", []) or [])], ["Erreurs / garde-fous", guard.get("reason") or _join(h.get("resolution_errors", []))]]
+    return render_table(["Champ", "Valeur"], data, max_rows=80)
+
+
+def _nmap_services_text(h: dict) -> str:
+    return "; ".join(f"{s.get('port')}/{s.get('protocol', 'tcp')} {s.get('name') or s.get('service') or ''} {s.get('product') or ''} {s.get('version') or 'Version non exposée'}".strip() for s in h.get("nmap_services", []) or [])
+
 def _css() -> str:
     return """
-:root{--bg:#07070a;--bg2:#09090d;--card:#101018;--card2:#151521;--red:#ff3045;--red2:#dc143c;--darkred:#65000b;--text:#f5f5f5;--muted:#a1a1aa;--border:rgba(255,48,69,.25);--green:#34d399;--orange:#fb923c}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 70% 0,rgba(220,20,60,.22),transparent 32%),linear-gradient(135deg,var(--bg),var(--bg2));color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial,sans-serif;line-height:1.55}.watermark{position:fixed;inset:auto -4vw 8vh auto;font-size:13vw;font-weight:900;letter-spacing:.08em;color:rgba(255,255,255,.025);transform:rotate(-10deg);pointer-events:none;z-index:0}.hero{position:relative;z-index:1;min-height:72vh;padding:72px 7vw 52px;border-bottom:1px solid var(--border);background:linear-gradient(120deg,rgba(255,48,69,.12),transparent 55%)}.hero:before{content:"";position:absolute;inset:24px;border:1px solid rgba(255,48,69,.18);border-radius:32px;pointer-events:none}.eyebrow{color:var(--red);text-transform:uppercase;letter-spacing:.28em;font-size:.78rem;font-weight:800}.hero h1{margin:.1em 0;font-size:clamp(3.6rem,9vw,8.8rem);line-height:.88;letter-spacing:-.08em}.hero h2{margin:0;color:#fff;font-size:clamp(1.15rem,2vw,2rem);font-weight:500}.hero-meta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0}.badge{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:5px 10px;background:rgba(255,48,69,.09);color:#fff;font-weight:800;font-size:.76rem;text-transform:uppercase;letter-spacing:.06em}.layout{position:relative;z-index:1;display:grid;grid-template-columns:280px minmax(0,1fr);gap:28px;padding:36px 5vw}.toc{position:sticky;top:20px;align-self:start;background:rgba(16,16,24,.86);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:20px;padding:18px;max-height:calc(100vh - 40px);overflow:auto}.toc strong{display:block;margin-bottom:12px;color:#fff}.toc a{display:block;color:var(--muted);text-decoration:none;padding:8px 10px;border-radius:10px;font-size:.92rem}.toc a:hover{background:rgba(255,48,69,.12);color:#fff}.content{min-width:0}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:28px}.metric-card,.cardlet{background:linear-gradient(180deg,var(--card),rgba(16,16,24,.76));border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.24)}.metric-card span{display:block;color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em}.metric-card strong{display:block;margin-top:7px;font-size:1.7rem;color:#fff}.metric-card small{color:var(--muted)}.section{margin:0 0 28px;padding:26px;background:rgba(16,16,24,.78);border:1px solid var(--border);border-radius:24px;box-shadow:0 20px 70px rgba(0,0,0,.26)}.section-title{display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,48,69,.18);padding-bottom:14px;margin-bottom:18px}.section-title span{color:var(--red);font-weight:900}.section h2{margin:0;color:#fff;font-size:1.55rem}.section-subtitle,.notice{color:var(--muted)}.lead{font-size:1.06rem;color:#e7e7e9}.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.cardlet h3{margin-top:0;color:var(--red)}.table-scroll{overflow:auto;border:1px solid rgba(255,48,69,.16);border-radius:16px}.table{width:100%;border-collapse:collapse;min-width:760px;background:rgba(7,7,10,.55)}.table th,.table td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;vertical-align:top}.table th{color:#fff;background:rgba(101,0,11,.5);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em}.table td{color:#d8d8dc;font-size:.9rem}.finding{border:1px solid rgba(255,48,69,.22);border-radius:18px;padding:18px;margin:14px 0;background:linear-gradient(135deg,rgba(255,48,69,.05),rgba(255,255,255,.02))}.finding-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.finding h3{margin:0;color:#fff}.finding-meta{display:grid;grid-template-columns:140px 1fr;gap:8px 12px}.finding-meta dt{color:var(--red);font-weight:800}.finding-meta dd{margin:0;color:#dcdce1}.severity-critical{background:rgba(101,0,11,.88);border-color:rgba(255,48,69,.75)}.severity-high{background:rgba(220,20,60,.55)}.severity-medium{background:rgba(251,146,60,.28);border-color:rgba(251,146,60,.45)}.severity-low{background:rgba(161,161,170,.18)}.severity-info{background:rgba(59,130,246,.16);border-color:rgba(59,130,246,.35)}.progress-wrap{margin:14px 0}.progress-label{display:flex;justify-content:space-between;color:#fff;font-weight:800}.progress{height:12px;border:1px solid var(--border);border-radius:999px;background:#09090d;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,var(--darkred),var(--red));border-radius:999px}.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#08080c;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;color:#f1f1f3;white-space:pre-wrap;word-break:break-word}@media(max-width:880px){.layout{grid-template-columns:1fr}.toc{position:relative;top:0}.hero{padding:48px 6vw}.section{padding:20px}}@media print{body{background:#09090d}.toc{position:relative}.layout{display:block}.section{break-inside:avoid}}
+:root{--bg:#07070a;--bg2:#09090d;--card:#101018;--card2:#151521;--red:#ff3045;--red2:#dc143c;--darkred:#65000b;--text:#f5f5f5;--muted:#a1a1aa;--border:rgba(255,48,69,.25);--green:#34d399;--orange:#fb923c}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 70% 0,rgba(220,20,60,.22),transparent 32%),linear-gradient(135deg,var(--bg),var(--bg2));color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Arial,sans-serif;line-height:1.55}.watermark{position:fixed;inset:auto -4vw 8vh auto;font-size:13vw;font-weight:900;letter-spacing:.08em;color:rgba(255,255,255,.025);transform:rotate(-10deg);pointer-events:none;z-index:0}.hero{position:relative;z-index:1;min-height:72vh;padding:72px 7vw 52px;border-bottom:1px solid var(--border);background:linear-gradient(120deg,rgba(255,48,69,.12),transparent 55%)}.hero:before{content:"";position:absolute;inset:24px;border:1px solid rgba(255,48,69,.18);border-radius:32px;pointer-events:none}.eyebrow{color:var(--red);text-transform:uppercase;letter-spacing:.28em;font-size:.78rem;font-weight:800}.hero h1{margin:.1em 0;font-size:clamp(3.6rem,9vw,8.8rem);line-height:.88;letter-spacing:-.08em}.hero h2{margin:0;color:#fff;font-size:clamp(1.15rem,2vw,2rem);font-weight:500}.hero-meta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0}.badge{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:5px 10px;background:rgba(255,48,69,.09);color:#fff;font-weight:800;font-size:.76rem;text-transform:uppercase;letter-spacing:.06em}.layout{position:relative;z-index:1;display:grid;grid-template-columns:280px minmax(0,1fr);gap:28px;padding:36px 5vw}.toc{position:sticky;top:20px;align-self:start;background:rgba(16,16,24,.86);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:20px;padding:18px;max-height:calc(100vh - 40px);overflow:auto}.toc strong{display:block;margin-bottom:12px;color:#fff}.toc a{display:block;color:var(--muted);text-decoration:none;padding:8px 10px;border-radius:10px;font-size:.92rem}.toc a:hover{background:rgba(255,48,69,.12);color:#fff}.content{min-width:0}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:28px}.metric-card,.cardlet{background:linear-gradient(180deg,var(--card),rgba(16,16,24,.76));border:1px solid var(--border);border-radius:18px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.24)}.metric-card span{display:block;color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em}.metric-card strong{display:block;margin-top:7px;font-size:1.7rem;color:#fff}.metric-card small{color:var(--muted)}.section{margin:0 0 28px;padding:26px;background:rgba(16,16,24,.78);border:1px solid var(--border);border-radius:24px;box-shadow:0 20px 70px rgba(0,0,0,.26)}.section-title{display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(255,48,69,.18);padding-bottom:14px;margin-bottom:18px}.section-title span{color:var(--red);font-weight:900}.section h2{margin:0;color:#fff;font-size:1.55rem}.section-subtitle,.notice{color:var(--muted)}.lead{font-size:1.06rem;color:#e7e7e9}.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.cardlet h3{margin-top:0;color:var(--red)}.table-scroll{overflow:auto;border:1px solid rgba(255,48,69,.16);border-radius:16px}.table{width:100%;border-collapse:collapse;min-width:760px;background:rgba(7,7,10,.55)}.table th,.table td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.07);text-align:left;vertical-align:top}.table th{color:#fff;background:rgba(101,0,11,.5);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em}.table td{color:#d8d8dc;font-size:.9rem}.finding{border:1px solid rgba(255,48,69,.22);border-radius:18px;padding:18px;margin:14px 0;background:linear-gradient(135deg,rgba(255,48,69,.05),rgba(255,255,255,.02))}.finding-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.finding h3{margin:0;color:#fff}.finding-meta{display:grid;grid-template-columns:140px 1fr;gap:8px 12px}.finding-meta dt{color:var(--red);font-weight:800}.finding-meta dd{margin:0;color:#dcdce1}.severity-critical{background:rgba(101,0,11,.88);border-color:rgba(255,48,69,.75)}.severity-high{background:rgba(220,20,60,.55)}.severity-medium{background:rgba(251,146,60,.28);border-color:rgba(251,146,60,.45)}.severity-low{background:rgba(161,161,170,.18)}.severity-info{background:rgba(59,130,246,.16);border-color:rgba(59,130,246,.35)}.progress-wrap{margin:14px 0}.progress-label{display:flex;justify-content:space-between;color:#fff;font-weight:800}.progress{height:12px;border:1px solid var(--border);border-radius:999px;background:#09090d;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,var(--darkred),var(--red));border-radius:999px}.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#08080c;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;color:#f1f1f3;white-space:pre-wrap;word-break:break-word}.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:14px 0}.filters input{background:#08080c;color:#fff;border:1px solid var(--border);border-radius:12px;padding:10px}.filters label{color:#d8d8dc;font-size:.9rem}.badge.mini{font-size:.64rem;padding:3px 7px;margin:2px}.host-card{border:1px solid rgba(255,48,69,.2);border-radius:16px;margin:12px 0;padding:12px;background:rgba(7,7,10,.35)}details summary{cursor:pointer;color:#fff;font-weight:800}@media(max-width:880px){.layout{grid-template-columns:1fr}.toc{position:relative;top:0}.hero{padding:48px 6vw}.section{padding:20px}}@media print{body{background:#09090d}.toc{position:relative}.layout{display:block}.section{break-inside:avoid}}
 """
 
 
@@ -386,11 +519,11 @@ def generate_html_report(audit: dict) -> str:
     subdomains = safe_get(audit, "subdomains.subdomains", [])
     cve_count = (safe_get(audit, "passive_cves.count", 0) or 0) + (safe_get(audit, "service_scan.count_cves", 0) or 0)
     toc = [
-        ("synthese", "Synthèse exécutive"), ("scoring", "Scoring"), ("plan", "Plan d’action priorisé"),
-        ("findings", "Findings"), ("dns", "DNS"), ("messagerie", "Messagerie"), ("web", "Web / Headers"),
-        ("tls", "TLS / SSL"), ("subdomains", "Sous-domaines"), ("ips", "IP publiques"),
-        ("nmap", "Nmap service/version/port"), ("cve", "CVE"), ("cti", "CTI / réputation"),
-        ("graph", "Graph Explorer"), ("limites", "Limites et responsabilité"),
+        ("synthese", "Synthèse"), ("system_locations", "System Locations"), ("hosting_networks", "Hosting / Networks"),
+        ("services_banners", "Services / Banners"), ("a_records", "A Records / Subdomains"),
+        ("mx_records", "MX Records"), ("ns_records", "NS Records"), ("txt_records", "TXT Records"),
+        ("host_inventory", "Host Inventory détaillé"), ("nmap", "Nmap en annexe"), ("cve", "CVE"),
+        ("limites", "Limites et sources"),
     ]
     hero_metrics = (
         '<div class="metric-grid">'
@@ -416,21 +549,36 @@ def generate_html_report(audit: dict) -> str:
 <header class="hero"><p class="eyebrow">OpenEASM Beta</p><h1>RAPPORT OPENEASM</h1><h2>External Attack Surface Management · Rapport d’exposition externe</h2>
 <div class="hero-meta"><span class="badge">Domaine: {esc(domain)}</span><span class="badge">Généré: {esc(now)}</span><span class="badge">NON EXPLOITANT</span><span class="badge">Service/version/CVE défensif public</span></div>{hero_metrics}</header>
 <main class="layout"><nav class="toc"><strong>Sommaire</strong>{''.join(f'<a href="#{sid}">{esc(label)}</a>' for sid, label in toc)}</nav><div class="content">
-{section('synthese','Synthèse exécutive',_build_executive_summary(audit))}
-{section('scoring','Scoring',_render_scoring(audit),'Scores consolidés et jauges visuelles CSS.')}
-{section('plan','Plan d’action priorisé',_render_action_plan(audit))}
-{section('findings','Findings détaillés',_render_findings(audit))}
-{section('dns','DNS',_render_dns(audit))}
-{section('messagerie','Messagerie',_render_mail(audit))}
-{section('web','Web / Headers',_render_web(audit))}
-{section('tls','TLS / SSL',_render_tls(audit))}
-{section('subdomains','Sous-domaines',_render_subdomains(audit))}
-{section('ips','IP publiques',_render_ips(audit))}
-{section('nmap','Nmap service/version/port',_render_nmap(audit),'Rappel : collecte non exploitante, sans scripts intrusifs.')}
+{section('synthese','Synthèse',_build_executive_summary(audit) + _render_dnsdumpster_like(audit))}
+{section('system_locations','System Locations',_render_system_locations(audit))}
+{section('hosting_networks','Hosting / Networks',_render_hosting_networks(audit))}
+{section('services_banners','Services / Banners',_render_services_banners(audit))}
+{section('a_records','A Records / Subdomains from dataset',_render_a_records_filterable(audit),'Table filtrable : host, ASN, pays, technologie, service, HTTP/HTTPS sans Nmap, garde-fou.')}
+{section('mx_records','MX Records',_render_mx_records(audit))}
+{section('ns_records','NS Records',_render_ns_records(audit))}
+{section('txt_records','TXT Records',_render_txt_records(audit))}
+{section('host_inventory','Host Inventory détaillé',_render_host_inventory_detail(audit))}
+{section('nmap','Nmap en annexe',_render_nmap(audit),'Rappel : collecte non exploitante, sans scripts intrusifs.')}
 {section('cve','CVE',_render_cves(audit))}
-{section('cti','CTI / réputation',_render_cti(audit))}
-{section('graph','Graph Explorer',_render_graph(audit))}
-{section('limites','Limites et responsabilité',limits)}
-</div></main></body></html>"""
+{section('limites','Limites et sources',limits)}
+</div></main><script>
+function filterDnsdumpsterTable(){{
+ const table=document.getElementById('dnsdumpsterTable'); if(!table) return;
+ const val=id=>(document.getElementById(id)?.value||'').toLowerCase();
+ const host=val('hostSearch'), asn=val('asnFilter'), country=val('countryFilter'), tech=val('techFilter'), service=val('serviceFilter');
+ const webNoNmap=document.getElementById('webNoNmap')?.checked; const guardOnly=document.getElementById('guardOnly')?.checked;
+ table.querySelectorAll('tbody tr').forEach(tr=>{{
+  let ok=true;
+  if(host && !tr.dataset.host.includes(host)) ok=false;
+  if(asn && !tr.dataset.asn.includes(asn)) ok=false;
+  if(country && !tr.dataset.country.includes(country)) ok=false;
+  if(tech && !tr.dataset.tech.includes(tech)) ok=false;
+  if(service && !tr.dataset.service.includes(service)) ok=false;
+  if(webNoNmap && tr.dataset.webnonmap!=='true') ok=false;
+  if(guardOnly && tr.dataset.guard!=='true') ok=false;
+  tr.style.display=ok?'':'none';
+ }});
+}}
+</script></body></html>"""
     path.write_text(html, encoding="utf-8")
     return filename
