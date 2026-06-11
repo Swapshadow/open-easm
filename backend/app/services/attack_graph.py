@@ -3,18 +3,18 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-MAX_SUBDOMAINS = 120
-MAX_IPS = 120
-MAX_FINDINGS = 60
-MAX_SERVICES = 100
+MAX_SUBDOMAINS = 180
+MAX_IPS = 180
+MAX_FINDINGS = 80
+MAX_SERVICES = 180
+MAX_HOSTS = 180
 
 
 def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
-    """Build a defensive relationship graph for the Graph Explorer.
+    """Build a defensive relationship graph for Graph Explorer.
 
-    The graph is intentionally explanatory, not offensive: it links domains,
-    subdomains, public IPs, web targets, exposed services, CVE correlations and
-    prioritized findings already produced by OpenEASM.
+    Beta 26.6 adds DNSDumpster-like host enrichment nodes: ASN/provider,
+    locations, technologies, banners and TLS certificate summaries.
     """
     nodes: dict[str, dict[str, Any]] = {}
     edges: dict[str, dict[str, Any]] = {}
@@ -23,13 +23,7 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
         if not node_id:
             return ""
         if node_id not in nodes:
-            nodes[node_id] = {
-                "id": node_id,
-                "label": label or node_id,
-                "type": node_type,
-                "weight": 1,
-                "properties": {},
-            }
+            nodes[node_id] = {"id": node_id, "label": label or node_id, "type": node_type, "weight": 1, "properties": {}}
         else:
             nodes[node_id]["weight"] = int(nodes[node_id].get("weight", 1)) + 1
         nodes[node_id]["properties"].update({k: v for k, v in props.items() if v not in (None, "", [], {})})
@@ -40,21 +34,13 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
             return
         edge_id = f"{source}->{target}:{edge_type}:{label}"
         if edge_id not in edges:
-            edges[edge_id] = {
-                "id": edge_id,
-                "source": source,
-                "target": target,
-                "label": label,
-                "type": edge_type,
-                "weight": 1,
-                "properties": {},
-            }
+            edges[edge_id] = {"id": edge_id, "source": source, "target": target, "label": label, "type": edge_type, "weight": 1, "properties": {}}
         else:
             edges[edge_id]["weight"] = int(edges[edge_id].get("weight", 1)) + 1
         edges[edge_id]["properties"].update({k: v for k, v in props.items() if v not in (None, "", [], {})})
 
     domain = audit.get("domain") or "domain"
-    root_id = add_node(f"domain:{domain}", domain, "domain", score=(audit.get("score") or {}).get("score"))
+    root_id = add_node(f"domain:{domain}", domain, "domain", score=(audit.get("score") or {}).get("score"), product=audit.get("product"))
 
     profile = audit.get("domain_profile") or {}
     if profile:
@@ -82,13 +68,50 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
             ip,
             "ip",
             scope=item.get("scope") if isinstance(item, dict) else None,
+            asn=item.get("asn") if isinstance(item, dict) else None,
+            asn_name=item.get("asn_name") if isinstance(item, dict) else None,
+            network=item.get("network") if isinstance(item, dict) else None,
+            country=item.get("country") if isinstance(item, dict) else None,
+            provider=item.get("provider") if isinstance(item, dict) else None,
             sources=item.get("sources") if isinstance(item, dict) else None,
         )
         add_edge(root_id, ip_id, "IP inventoriée", "inventory")
-        for host in (item.get("hostnames", []) if isinstance(item, dict) else [])[:12]:
+        if isinstance(item, dict) and item.get("asn"):
+            asn_id = add_node(f"asn:{item.get('asn')}", item.get("asn_name") or item.get("asn"), "asn", network=item.get("network"), country=item.get("country"))
+            add_edge(ip_id, asn_id, "hébergé par", "hosted_by")
+        for host in (item.get("hostnames", []) if isinstance(item, dict) else [])[:16]:
             host_type = "domain" if host == domain else "subdomain"
             host_id = add_node(f"domain:{host}", host, host_type)
             add_edge(host_id, ip_id, "résout vers", "dns_resolution")
+
+    for host in (audit.get("host_enrichment") or {}).get("hosts", [])[:MAX_HOSTS]:
+        if not isinstance(host, dict):
+            continue
+        hostname = host.get("hostname")
+        if not hostname:
+            continue
+        host_id = add_node(
+            f"domain:{hostname}",
+            hostname,
+            "domain" if hostname == domain else "subdomain",
+            title=host.get("title"),
+            best_url=host.get("best_url"),
+            status=host.get("status"),
+        )
+        add_edge(root_id, host_id, "host enrichi", "host_enrichment")
+        for ip in host.get("public_ips", [])[:12]:
+            ip_id = add_node(f"ip:{ip}", ip, "ip")
+            add_edge(host_id, ip_id, "résout vers", "host_resolution")
+        for tech in host.get("technologies", [])[:12]:
+            tech_id = add_node(f"tech:{tech}", tech, "technology")
+            add_edge(host_id, tech_id, "technologie", "fingerprint")
+        for banner in host.get("banners", [])[:8]:
+            banner_id = add_node(f"banner:{banner}", banner[:80], "banner")
+            add_edge(host_id, banner_id, "banner", "fingerprint")
+        cert = host.get("tls_certificate") or {}
+        if cert.get("subject_cn"):
+            cert_id = add_node(f"cert:{hostname}", cert.get("subject_cn"), "certificate", issuer=cert.get("issuer_cn"), not_after=cert.get("not_after"))
+            add_edge(host_id, cert_id, "certificat TLS", "tls_certificate")
 
     for target in (audit.get("web") or {}).get("targets", [])[:MAX_SUBDOMAINS]:
         host = target.get("hostname")
@@ -99,10 +122,6 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
         if target.get("reachable"):
             web_id = add_node(f"web:{host}", target.get("best_scheme") or host, "web", reachable=True)
             add_edge(host_id, web_id, "HTTP(S)", "web_service")
-        guard = target.get("guard") or {}
-        for ip in guard.get("public_ips", [])[:12]:
-            ip_id = add_node(f"ip:{ip}", ip, "ip", source="web_guard")
-            add_edge(host_id, ip_id, "résout vers", "web_resolution")
 
     scan = audit.get("service_scan") or {}
     for port in scan.get("open_ports", [])[:MAX_SERVICES]:
@@ -119,40 +138,23 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
         )
         add_edge(host_id, service_id, "expose", "exposes_service", port=port.get("port"))
         for cve in port.get("cves", []) or []:
-            cve_id = add_node(
-                f"cve:{cve.get('cve')}",
-                cve.get("cve", "CVE"),
-                "cve",
-                severity=cve.get("severity"),
-                cvss=cve.get("cvss"),
-            )
+            cve_id = add_node(f"cve:{cve.get('cve')}", cve.get("cve", "CVE"), "cve", severity=cve.get("severity"), cvss=cve.get("cvss"))
             add_edge(service_id, cve_id, "corrélation CVE", "cve_correlation", confidence=cve.get("confidence"))
 
     for idx, finding in enumerate(sorted(audit.get("findings", []), key=lambda f: _severity_rank(f.get("severity")))[:MAX_FINDINGS]):
         title = finding.get("title") or finding.get("category") or "Constat"
         sev = finding.get("severity") or "info"
-        finding_id = add_node(
-            f"finding:{idx}:{abs(hash(title))}",
-            title[:80],
-            "finding",
-            severity=sev,
-            category=finding.get("category"),
-            recommendation=finding.get("recommendation"),
-        )
+        finding_id = add_node(f"finding:{idx}:{abs(hash(title))}", title[:80], "finding", severity=sev, category=finding.get("category"), recommendation=finding.get("recommendation"))
         loc = finding.get("location") or {}
         host = loc.get("hostname") or loc.get("host") or loc.get("domain") or domain
         host_id = add_node(f"domain:{host}", host, "domain" if host == domain else "subdomain")
         add_edge(host_id, finding_id, sev, "has_finding", severity=sev)
 
     type_counts = Counter(node.get("type") for node in nodes.values())
-    severity_counts = Counter(
-        str((node.get("properties") or {}).get("severity", "info"))
-        for node in nodes.values()
-        if node.get("type") in {"finding", "cve"}
-    )
+    severity_counts = Counter(str((node.get("properties") or {}).get("severity", "info")) for node in nodes.values() if node.get("type") in {"finding", "cve"})
 
     return {
-        "version": "v7.5",
+        "version": "OpenEASM Beta 26.6",
         "domain": domain,
         "generated_from_audit_id": audit.get("id"),
         "nodes": list(nodes.values()),
@@ -166,11 +168,16 @@ def build_attack_graph(audit: dict[str, Any]) -> dict[str, Any]:
             "service_cves": scan.get("count_cves", 0),
             "public_ips": inventory.get("public_ip_count", 0),
             "subdomains": (audit.get("subdomains") or {}).get("count", 0),
+            "enriched_hosts": (audit.get("host_enrichment") or {}).get("summary", {}).get("active_host_count", 0),
         },
         "legend": {
             "domain": "Domaine racine",
             "subdomain": "Sous-domaine public",
             "ip": "Adresse IP publique",
+            "asn": "ASN / hébergeur",
+            "technology": "Technologie détectée",
+            "banner": "Bannière HTTP/service",
+            "certificate": "Certificat TLS",
             "web": "Service web observé",
             "service": "Port/service détecté par Nmap",
             "cve": "CVE corrélée sans exploitation",
