@@ -82,8 +82,9 @@ def _sheet_summary(ws, audit: dict):
         ("Posture", risk.get("posture")),
         ("Profil", profile.get("label")),
         ("IP publiques", ip.get("public_ip_count", 0)),
-        ("Sous-domaines", sub.get("count", 0)),
-        ("Ports Nmap", scan.get("count_open_ports", 0)),
+        ("Hosts canoniques", len((audit.get("canonical_hosts") or (audit.get("dnsdumpster_like", {}) or {}).get("canonical_hosts") or []))),
+        ("Aliases regroupés", (audit.get("dnsdumpster_like", {}) or {}).get("aliases_count", 0)),
+        ("Ports Nmap", len(scan.get("canonical_open_ports", scan.get("open_ports", [])) or [])),
         ("CVE service/version", scan.get("count_cves", 0)),
         ("TLS", f"{audit.get('tls_score', {}).get('global_score', 'N/A')} / 100"),
         ("Date audit", audit.get("created_at")),
@@ -184,7 +185,7 @@ def _sheet_dnsdumpster_like(wb, audit):
 
 
 def _host_headers():
-    return ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Provider", "Open Services", "HTTP Status", "HTTPS Status", "Final URL", "Title", "Server Banner", "TLS CN", "TLS SAN", "TLS Issuer", "TLS Expiration", "Technologies", "Nmap Services", "RevIP", "Sources"]
+    return ["Host", "Aliases", "IP", "ASN", "Network", "ASN Name", "Country", "Provider", "Open Services", "HTTP Status", "HTTPS Status", "Final URL", "Title", "Server Banner", "TLS CN", "TLS SAN", "TLS Issuer", "TLS Expiration", "Technologies", "Nmap Services", "RevIP", "Sources"]
 
 
 def _host_row(h):
@@ -195,7 +196,7 @@ def _host_row(h):
     server_banner = "; ".join(dict.fromkeys([s.get("banner") for s in h.get("open_services", []) if s.get("banner")]))
     title = https.get("title") or http.get("title") or next((s.get("title") for s in h.get("open_services", []) if s.get("title") and s.get("title") != "Non détecté"), "Non détecté")
     return [
-        h.get("host"), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("provider"),
+        h.get("host"), "\n".join(h.get("aliases", []) or []), h.get("ip"), h.get("asn"), h.get("network"), h.get("asn_name"), h.get("country"), h.get("provider"),
         services, http.get("status_code") or "Non détecté", https.get("status_code") or "Non détecté", https.get("final_url") or http.get("final_url") or "Non détecté", title,
         server_banner or "Non détecté", tls.get("cn") or "Non détecté", "\n".join(tls.get("san", []) or []), tls.get("issuer") or "Non détecté", tls.get("expires_at") or "Non détecté",
         _tech_text(h.get("technologies", [])) or "Non détecté", _nmap_text(h.get("nmap_services", [])) or "Non détecté par Nmap", h.get("revip_count", 0), ", ".join(h.get("sources", [])),
@@ -277,7 +278,7 @@ def _sheet_nmap(wb, audit):
     ws = wb.create_sheet("Nmap Services")
     scan = audit.get("service_scan", {}) or {}
     rows = []
-    for port in scan.get("open_ports", []):
+    for port in scan.get("canonical_open_ports", scan.get("open_ports", [])):
         cves = port.get("cves", []) or []
         if cves:
             for cve in cves:
@@ -363,6 +364,9 @@ def _sheet_raw(wb, audit):
         ["score", json.dumps(audit.get("score", {}), ensure_ascii=False, default=str)],
         ["executive_risk", json.dumps(audit.get("executive_risk", {}), ensure_ascii=False, default=str)[:32000]],
         ["dnsdumpster_like", json.dumps(audit.get("dnsdumpster_like", {}), ensure_ascii=False, default=str)[:32000]],
+        ["canonical_hosts", json.dumps(audit.get("canonical_hosts", []), ensure_ascii=False, default=str)[:32000]],
+        ["raw_subdomains", json.dumps(audit.get("raw_subdomains", []), ensure_ascii=False, default=str)[:32000]],
+        ["raw_nmap_services", json.dumps(audit.get("raw_nmap_services", []), ensure_ascii=False, default=str)[:32000]],
     ]
     _table_sheet(ws, "RÉSUMÉ JSON", ["Clé", "Valeur"], rows)
 

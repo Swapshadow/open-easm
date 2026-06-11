@@ -331,7 +331,7 @@ def _render_ips(audit: dict) -> str:
 
 def _render_nmap(audit: dict) -> str:
     rows = []
-    for port in safe_get(audit, "service_scan.open_ports", []):
+    for port in (safe_get(audit, "service_scan.canonical_open_ports", []) or safe_get(audit, "service_scan.open_ports", [])):
         if isinstance(port, dict):
             rows.append([port.get("host") or port.get("ip"), port.get("port"), port.get("protocol"), port.get("service"), port.get("product"), port.get("version"), _join(port.get("cpe") or port.get("cpes")), _join(port.get("cves"))])
     return '<p class="notice">Nmap service/version/port est utilisé en mode non exploitant.</p>' + render_table(["Host", "Port", "Proto", "Service", "Produit", "Version", "CPE", "CVE corrélées"], rows)
@@ -404,17 +404,20 @@ def _render_a_records_filterable(audit: dict) -> str:
 <label><input id="webNoNmap" type="checkbox" onchange="filterDnsdumpsterTable()"> HTTP/HTTPS détecté mais Nmap vide</label>
 <label><input id="guardOnly" type="checkbox" onchange="filterDnsdumpsterTable()"> Bloqué par garde-fou</label>
 </div>"""
-    headers = ["Host", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services observed", "RevIP", "Sources"]
+    headers = ["Host", "Aliases", "IP", "ASN", "Network", "ASN Name", "Country", "Open Services", "Title", "TLS CN", "Technologies", "RevIP", "Sources"]
     rows = []
     for h in records:
         tech = _tech_text(h)
         services = _open_services_html(h)
         badges = _host_badges(h)
         detail = _host_detail_html(h)
-        attrs = {"host": h.get("host", ""), "asn": h.get("asn", ""), "country": h.get("country", ""), "tech": tech, "service": _plain_services(h), "webnonmap": str(bool(h.get("open_services") and not h.get("nmap_services"))).lower(), "guard": str(bool(h.get("guardrail"))).lower()}
+        aliases = ", ".join(h.get("aliases", []) or [])
+        title = (h.get("https") or {}).get("title") or (h.get("http") or {}).get("title") or next((svc.get("title") for svc in h.get("open_services", []) if svc.get("title")), "Non détecté")
+        tls_cn = (h.get("tls") or {}).get("cn") or "Non détecté"
+        attrs = {"host": f"{h.get('host', '')} {aliases}", "asn": h.get("asn", ""), "country": h.get("country", ""), "tech": tech, "service": _plain_services(h), "webnonmap": str(bool(h.get("open_services") and not h.get("nmap_services"))).lower(), "guard": str(bool(h.get("guardrail"))).lower()}
         attr_str = " ".join(f'data-{k}="{esc(v).lower()}"' for k, v in attrs.items())
         host_cell = SafeHtml(f'<details><summary>{esc(h.get("host"))} {badges}</summary>{detail}</details>')
-        rows.append(SafeHtml(f'<tr {attr_str} class="dnsdumpster-row"><td>{host_cell}</td><td>{esc(h.get("ip"))}</td><td>{esc(h.get("asn"))}</td><td>{esc(h.get("network"))}</td><td>{esc(h.get("asn_name"))}</td><td>{esc(h.get("country"))}</td><td>{services}</td><td>{esc(h.get("revip_count", 0))}</td><td>{esc(", ".join(h.get("sources", []) or []))}</td></tr>'))
+        rows.append(SafeHtml(f'<tr {attr_str} class="dnsdumpster-row"><td>{host_cell}</td><td>{esc(aliases or "—")}</td><td>{esc(h.get("ip"))}</td><td>{esc(h.get("asn"))}</td><td>{esc(h.get("network"))}</td><td>{esc(h.get("asn_name"))}</td><td>{esc(h.get("country"))}</td><td>{services}</td><td>{esc(title)}</td><td>{esc(tls_cn)}</td><td>{esc(tech or "Non détecté")}</td><td>{esc(h.get("revip_count", 0))}</td><td>{esc(", ".join(h.get("sources", []) or []))}</td></tr>'))
     if not rows:
         return controls + '<p class="notice">Aucun A record enrichi disponible.</p>'
     head = "".join(f"<th>{esc(h)}</th>" for h in headers)
@@ -523,7 +526,7 @@ def generate_html_report(audit: dict) -> str:
         ("services_banners", "Services / Banners"), ("a_records", "A Records / Subdomains"),
         ("mx_records", "MX Records"), ("ns_records", "NS Records"), ("txt_records", "TXT Records"),
         ("host_inventory", "Host Inventory détaillé"), ("nmap", "Nmap en annexe"), ("cve", "CVE"),
-        ("limites", "Limites et sources"),
+        ("graph", "Graph summary"), ("limites", "Limites et sources"),
     ]
     hero_metrics = (
         '<div class="metric-grid">'
@@ -531,7 +534,11 @@ def generate_html_report(audit: dict) -> str:
         + _metric("Niveau de risque", risk.get("risk_level") or score.get("level") or "N/A")
         + _metric("IP publiques", safe_get(audit, "ip_inventory.public_ip_count", 0))
         + _metric("Sous-domaines", safe_get(audit, "subdomains.count", len(_as_list(subdomains))))
-        + _metric("Ports Nmap", safe_get(audit, "service_scan.count_open_ports", 0), "non exploitant")
+        + _metric("Hosts canoniques", safe_get(audit, "dnsdumpster_like.canonicalization.canonical_hosts", len(safe_get(audit, "canonical_hosts", []))))
+        + _metric("Aliases regroupés", safe_get(audit, "dnsdumpster_like.aliases_count", 0))
+        + _metric("HTTP/HTTPS observés", safe_get(audit, "dnsdumpster_like.canonicalization.http_https_services", 0))
+        + _metric("Ports Nmap", len(safe_get(audit, "service_scan.canonical_open_ports", []) or safe_get(audit, "service_scan.open_ports", [])), "consolidés")
+        + _metric("Technologies", safe_get(audit, "dnsdumpster_like.canonicalization.technologies", 0))
         + _metric("CVE corrélées", cve_count, "corrélation de version")
         + '</div>'
     )
@@ -560,6 +567,7 @@ def generate_html_report(audit: dict) -> str:
 {section('host_inventory','Host Inventory détaillé',_render_host_inventory_detail(audit))}
 {section('nmap','Nmap en annexe',_render_nmap(audit),'Rappel : collecte non exploitante, sans scripts intrusifs.')}
 {section('cve','CVE',_render_cves(audit))}
+{section('graph','Graph summary',_render_graph(audit))}
 {section('limites','Limites et sources',limits)}
 </div></main><script>
 function filterDnsdumpsterTable(){{

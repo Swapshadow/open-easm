@@ -38,6 +38,7 @@ from app.services.nmap_audit import audit_service_versions
 from app.services.dnsdumpster_like_inventory import build_dnsdumpster_like_inventory
 from app.services.legal_terms import legal_payload, create_acceptance, validate_acceptance
 from app.services.attack_graph import build_attack_graph
+from app.services.host_canonicalization import consolidate_nmap_services
 
 app = FastAPI(
     title="OpenEASM Beta",
@@ -156,6 +157,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
     passive_cves = detect_passive_cves(web_result)
     cti_result = audit_cti(ip_inventory, domain)
     service_scan = await asyncio.to_thread(audit_service_versions, domain, ip_inventory)
+    service_scan["raw_nmap_services"] = list(service_scan.get("open_ports", []) or [])
     dnsdumpster_like = await build_dnsdumpster_like_inventory(
         domain,
         dns_result,
@@ -164,6 +166,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         ip_inventory,
         service_scan,
     )
+    alias_map = dnsdumpster_like.get("alias_map", {}) or {}
+    service_scan["canonical_open_ports"] = consolidate_nmap_services(service_scan.get("open_ports", []), alias_map)
 
     raw_findings = collect_findings(
         dns_result,
@@ -203,6 +207,9 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "passive_cves": passive_cves,
         "service_scan": service_scan,
         "dnsdumpster_like": dnsdumpster_like,
+        "canonical_hosts": dnsdumpster_like.get("canonical_hosts", []),
+        "raw_subdomains": subdomains_result.get("subdomains", []) or [],
+        "raw_nmap_services": service_scan.get("raw_nmap_services", []),
         "cti": cti_result,
         "patching_sla": patching_sla,
         "executive_risk": executive_risk,
@@ -294,6 +301,9 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "ns_records": dnsdumpster_like.get("ns_records", [])[:50],
             "txt_records": dnsdumpster_like.get("txt_records", [])[:80],
             "hosts": dnsdumpster_like.get("hosts", [])[:80],
+            "canonical_hosts": dnsdumpster_like.get("canonical_hosts", [])[:80],
+            "aliases_count": dnsdumpster_like.get("aliases_count", 0),
+            "canonicalization": dnsdumpster_like.get("canonicalization", {}),
             "policy": dnsdumpster_like.get("policy", {}),
         },
         "service_scan": {
@@ -303,7 +313,8 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "count_cves": service_scan.get("count_cves", 0),
             "elapsed_seconds": service_scan.get("elapsed_seconds", 0),
             "targets": service_scan.get("targets", [])[:10],
-            "open_ports": service_scan.get("open_ports", [])[:80],
+            "open_ports": service_scan.get("canonical_open_ports", service_scan.get("open_ports", []))[:80],
+            "raw_open_ports": service_scan.get("raw_nmap_services", [])[:80],
             "cves": service_scan.get("cves", [])[:50],
             "note": service_scan.get("note"),
         },
@@ -338,6 +349,7 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
         "html_url": f"/api/reports/{audit_id}/html",
         "graph_url": f"/api/audits/{audit_id}/graph",
         "attack_graph": audit.get("attack_graph", {}),
+        "canonical_hosts": audit.get("canonical_hosts", [])[:120],
         "report_errors": audit.get("report_errors", []),
         "summary": {
             "dns_public_ips": audit["dns"].get("public_ips", []),
@@ -351,8 +363,15 @@ async def create_audit(payload: AuditRequest, request: Request, db=Depends(get_d
             "core_public_ip_count": ip_inventory.get("core_public_ip_count", 0),
             "third_party_provider_ip_count": ip_inventory.get("third_party_provider_ip_count", 0),
             "passive_cve_count": passive_cves.get("count", 0),
-            "service_open_port_count": service_scan.get("count_open_ports", 0),
+            "canonical_host_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("canonical_hosts", len(dnsdumpster_like.get("canonical_hosts", []) or [])),
+            "aliases_grouped": dnsdumpster_like.get("aliases_count", 0),
+            "http_https_service_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("http_https_services", 0),
+            "service_open_port_count": len(service_scan.get("canonical_open_ports", service_scan.get("open_ports", [])) or []),
             "service_cve_count": service_scan.get("count_cves", 0),
+            "technology_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("technologies", 0),
+            "asn_network_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("asn_networks", 0),
+            "location_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("locations", 0),
+            "http_without_nmap_count": (dnsdumpster_like.get("canonicalization", {}) or {}).get("http_hosts_without_nmap", 0),
             "service_scan_elapsed_seconds": service_scan.get("elapsed_seconds", 0),
             "tls_score": tls_score.get("global_score"),
             "tls_level": tls_score.get("global_level"),
